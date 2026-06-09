@@ -551,6 +551,7 @@ body {
   gap: 8px;
   justify-content: flex-end;
   background: var(--bg2);
+  margin-top: 5px;
 }
 
 .empty-state {
