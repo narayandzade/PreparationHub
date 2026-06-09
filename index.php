@@ -138,15 +138,15 @@
         <div class="row g-3">
           <div class="col-12">
             <label class="form-label">Question</label>
-            <textarea id="qQuestion" class="form-control" rows="2" placeholder="Enter the interview question…" required></textarea>
+            <textarea id="qQuestion" class="form-control" rows="1" placeholder="Enter the interview question…" required></textarea>
           </div>
           <div class="col-12">
             <label class="form-label">Answer</label>
-            <textarea id="qAnswer" class="form-control" rows="5" placeholder="Write a clear, concise answer…" required></textarea>
+            <textarea id="qAnswer" class="form-control" rows="10" placeholder="Write a clear, concise answer…" required></textarea>
           </div>
           <div class="col-12">
             <label class="form-label">Key Points <span class="label-hint">(one per line)</span></label>
-            <textarea id="qPoints" class="form-control" rows="3" placeholder="Point one&#10;Point two&#10;Point three"></textarea>
+            <textarea id="qPoints" class="form-control" rows="5" placeholder="Point one&#10;Point two&#10;Point three"></textarea>
           </div>
           <div class="col-md-4">
             <label class="form-label">Language</label>
