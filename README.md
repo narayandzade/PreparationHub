@@ -38,7 +38,7 @@ A clean, full-stack **PHP + MySQL** single-page application for organizing and p
 ## 📁 Project Structure
 
 ```
-interview-prep-hub/
+PreparationHub/
 ├── index.php           # Entry point (triggers backup, renders SPA shell)
 ├── backend.php         # REST API — all CRUD + status update + search
 ├── database.php        # PDO connection
@@ -61,8 +61,8 @@ interview-prep-hub/
 
 **1. Clone the repo**
 ```bash
-git clone https://github.com/narayandzade/interview-prep-hub.git
-cd interview-prep-hub
+git clone https://github.com/narayandzade/PreparationHub.git
+cd PreparationHub
 ```
 
 **2. Import the database**
@@ -85,7 +85,7 @@ $pass = '';
 
 Place the folder in your XAMPP `htdocs` (or MAMP `htdocs`) directory and open:
 ```
-http://localhost/interview-prep-hub/
+http://localhost/PreparationHub/
 ```
 
 ---
