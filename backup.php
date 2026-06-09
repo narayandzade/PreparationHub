@@ -1,15 +1,33 @@
 <?php
 /**
  * backup.php — auto-detects mysqldump path, uses PDO fallback if exec() is
- * disabled, writes preparation_backup.sql and backup.log in the same folder.
+ * disabled. Writes backup to __DIR__ if writable, otherwise falls back to
+ * sys_get_temp_dir() — no sudo or manual chmod needed on any machine.
  */
 
 define('BACKUP_HOST', 'localhost');
 define('BACKUP_DB',   'preparation');
 define('BACKUP_USER', 'root');
 define('BACKUP_PASS', '');
-define('BACKUP_FILE', __DIR__ . '/preparation_backup.sql');
-define('BACKUP_LOG',  __DIR__ . '/backup.log');
+
+// ── Resolve writable output directory automatically ──────────────────────────
+function resolveBackupDir(): string {
+    $preferred = __DIR__;
+
+    // Try chmod in case we own the dir (same-user setup)
+    if (!is_writable($preferred)) {
+        @chmod($preferred, 0775);
+    }
+
+    if (is_writable($preferred)) return $preferred;
+
+    // Fall back to system temp — always writable on Mac/Linux/Windows
+    return sys_get_temp_dir();
+}
+
+$backupDir  = resolveBackupDir();
+define('BACKUP_FILE', $backupDir . '/preparation_backup.sql');
+define('BACKUP_LOG',  $backupDir . '/backup.log');
 
 function backupLog(string $msg): void {
     @file_put_contents(BACKUP_LOG, '[' . date('Y-m-d H:i:s') . '] ' . $msg . "\n", FILE_APPEND);
@@ -17,24 +35,22 @@ function backupLog(string $msg): void {
 
 // ── 1. Find mysqldump binary ─────────────────────────────────────────────────
 function findMysqldump(): string {
-    // Common XAMPP / Homebrew / system locations (Mac + Windows + Linux)
     $candidates = [
-        '/Applications/XAMPP/xamppfiles/bin/mysqldump',   // XAMPP Mac
-        '/Applications/MAMP/Library/bin/mysqldump',       // MAMP Mac
-        '/usr/local/bin/mysqldump',                        // Homebrew Mac
-        '/opt/homebrew/bin/mysqldump',                     // Homebrew Apple Silicon
-        '/usr/bin/mysqldump',                              // Linux system
-        '/usr/local/mysql/bin/mysqldump',                  // MySQL.com pkg Mac
-        'C:/xampp/mysql/bin/mysqldump.exe',                // XAMPP Windows
+        '/Applications/XAMPP/xamppfiles/bin/mysqldump',
+        '/Applications/MAMP/Library/bin/mysqldump',
+        '/usr/local/bin/mysqldump',
+        '/opt/homebrew/bin/mysqldump',
+        '/usr/bin/mysqldump',
+        '/usr/local/mysql/bin/mysqldump',
+        'C:/xampp/mysql/bin/mysqldump.exe',
         'C:/wamp64/bin/mysql/mysql8.0.31/bin/mysqldump.exe',
-        'mysqldump',                                       // PATH fallback
+        'mysqldump',
     ];
 
     foreach ($candidates as $path) {
         if (@is_executable($path)) return $path;
     }
 
-    // Try `which` / `where` as last resort
     $which = PHP_OS_FAMILY === 'Windows' ? 'where mysqldump' : 'which mysqldump';
     $found = trim((string) shell_exec($which));
     if ($found && @is_executable($found)) return $found;
@@ -62,12 +78,10 @@ function pdoDump(): void {
     $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
 
     foreach ($tables as $table) {
-        // DROP + CREATE
         $create = $pdo->query("SHOW CREATE TABLE `$table`")->fetch(PDO::FETCH_NUM);
         $out .= "DROP TABLE IF EXISTS `$table`;\n";
         $out .= $create[1] . ";\n\n";
 
-        // Row data
         $rows = $pdo->query("SELECT * FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
         if (!$rows) { $out .= "\n"; continue; }
 
@@ -88,22 +102,16 @@ function pdoDump(): void {
     $out .= "SET FOREIGN_KEY_CHECKS=1;\n";
 
     if (file_put_contents(BACKUP_FILE, $out) === false) {
-        backupLog('PDO fallback: file_put_contents failed — check folder permissions');
+        backupLog('PDO fallback: file_put_contents failed');
         return;
     }
-    backupLog('OK (PDO fallback) — ' . round(filesize(BACKUP_FILE) / 1024, 1) . ' KB');
+    backupLog('OK (PDO fallback) — ' . round(filesize(BACKUP_FILE) / 1024, 1) . ' KB — saved to: ' . BACKUP_FILE);
 }
 
 // ── 3. Main backup logic ─────────────────────────────────────────────────────
 function runBackup(): void {
-    // Check write permission first
-    $dir = dirname(BACKUP_FILE);
-    if (!is_writable($dir)) {
-        backupLog('FAILED: directory not writable — ' . $dir);
-        return;
-    }
+    backupLog('Backup dir: ' . dirname(BACKUP_FILE));
 
-    // Check if exec() is available
     $disabled = array_map('trim', explode(',', ini_get('disable_functions')));
     if (in_array('exec', $disabled) || !function_exists('exec')) {
         backupLog('exec() disabled — using PDO fallback');
@@ -130,14 +138,14 @@ function runBackup(): void {
         escapeshellarg(BACKUP_DB)
     );
 
-    // Capture output directly instead of shell redirect (avoids permission issues)
     $output   = [];
     $exitCode = 0;
     exec($cmd . ' 2>&1', $output, $exitCode);
 
     $content = implode("\n", $output);
 
-    if ($exitCode !== 0 || strlen($content) < 100) {
+    // exit 0 = success, exit 2 = warnings (still valid output) — only exit 1 is a real error
+    if ($exitCode === 1 || strlen($content) < 100) {
         backupLog('mysqldump failed (exit ' . $exitCode . '): ' . substr($content, 0, 200));
         backupLog('Falling back to PDO dump');
         pdoDump();
@@ -145,11 +153,11 @@ function runBackup(): void {
     }
 
     if (file_put_contents(BACKUP_FILE, $content) === false) {
-        backupLog('FAILED: could not write backup file');
+        backupLog('FAILED: could not write backup file — ' . BACKUP_FILE);
         return;
     }
 
-    backupLog('OK (mysqldump) — ' . round(filesize(BACKUP_FILE) / 1024, 1) . ' KB — binary: ' . $bin);
+    backupLog('OK (mysqldump) — ' . round(filesize(BACKUP_FILE) / 1024, 1) . ' KB — binary: ' . $bin . ' — saved to: ' . BACKUP_FILE);
 }
 
 runBackup();

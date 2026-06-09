@@ -1,0 +1,46 @@
+[2026-06-09 08:14:49] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:14:50] mysqldump failed (exit 2): -- MariaDB dump 10.19  Distrib 10.4.28-MariaDB, for osx10.10 (x86_64)
+--
+-- Host: localhost    Database: preparation
+-- ------------------------------------------------------
+-- Server version	10.4.28
+[2026-06-09 08:14:50] Falling back to PDO dump
+[2026-06-09 08:14:50] OK (PDO fallback) — 258.9 KB — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:14:51] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:14:51] mysqldump failed (exit 2): -- MariaDB dump 10.19  Distrib 10.4.28-MariaDB, for osx10.10 (x86_64)
+--
+-- Host: localhost    Database: preparation
+-- ------------------------------------------------------
+-- Server version	10.4.28
+[2026-06-09 08:14:51] Falling back to PDO dump
+[2026-06-09 08:14:51] OK (PDO fallback) — 258.9 KB — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:15:17] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:15:17] mysqldump failed (exit 2): -- MariaDB dump 10.19  Distrib 10.4.28-MariaDB, for osx10.10 (x86_64)
+--
+-- Host: localhost    Database: preparation
+-- ------------------------------------------------------
+-- Server version	10.4.28
+[2026-06-09 08:15:17] Falling back to PDO dump
+[2026-06-09 08:15:17] OK (PDO fallback) — 258.9 KB — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:15:17] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:15:18] mysqldump failed (exit 2): -- MariaDB dump 10.19  Distrib 10.4.28-MariaDB, for osx10.10 (x86_64)
+--
+-- Host: localhost    Database: preparation
+-- ------------------------------------------------------
+-- Server version	10.4.28
+[2026-06-09 08:15:18] Falling back to PDO dump
+[2026-06-09 08:15:18] OK (PDO fallback) — 258.9 KB — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:16:01] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:16:01] OK (mysqldump) — 257.3 KB — binary: /Applications/XAMPP/xamppfiles/bin/mysqldump — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:16:01] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:16:01] OK (mysqldump) — 257.3 KB — binary: /Applications/XAMPP/xamppfiles/bin/mysqldump — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:16:53] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:16:54] OK (mysqldump) — 257.3 KB — binary: /Applications/XAMPP/xamppfiles/bin/mysqldump — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:16:54] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:16:54] OK (mysqldump) — 257.3 KB — binary: /Applications/XAMPP/xamppfiles/bin/mysqldump — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:18:33] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:18:33] OK (mysqldump) — 257.3 KB — binary: /Applications/XAMPP/xamppfiles/bin/mysqldump — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:18:34] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:18:34] OK (mysqldump) — 257.3 KB — binary: /Applications/XAMPP/xamppfiles/bin/mysqldump — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
+[2026-06-09 08:18:34] Backup dir: /Applications/XAMPP/xamppfiles/htdocs/preparation
+[2026-06-09 08:18:34] OK (mysqldump) — 257.3 KB — binary: /Applications/XAMPP/xamppfiles/bin/mysqldump — saved to: /Applications/XAMPP/xamppfiles/htdocs/preparation/preparation_backup.sql
