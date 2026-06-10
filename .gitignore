@@ -1,1 +1,43 @@
-backup.log
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# PHP environment
+.env
+.env.local
+.env.production
+config.local.php
+
+# Dependencies
+vendor/
+node_modules/
+
+# Compiled / cache
+__pycache__/
+*.pyc
+*.pyo
+.cache/
+dist/
+build/
+
+# Database dumps (keep .sql in repo only if intentional)
+*.sql.gz
+*.sql.zip
+
+# Backup files
+backup.*
+debug_backup.*
+*_backup.*
+*.bak
+*.tmp
