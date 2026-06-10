@@ -96,6 +96,15 @@ function applyStatusToBtn(btn, questionId, status) {
     btn.innerHTML = `<i class="bi ${meta.icon}"></i><span>${meta.label}</span>`;
     btn.title = `Mark as ${STATUS_CYCLE[status]}`;
     btn.setAttribute('onclick', `cycleStatus(${questionId},'${status}',event)`);
+
+    const footBtn = document.querySelector(`.status-btn[data-qid="foot-${questionId}"]`);
+    if (footBtn) {
+        footBtn.dataset.status = status;
+        footBtn.className = `status-btn ${meta.cls} status-btn-foot`;
+        footBtn.innerHTML = `<i class="bi ${meta.icon}"></i><span>${meta.label}</span>`;
+        footBtn.title = `Mark as ${STATUS_CYCLE[status]}`;
+        footBtn.setAttribute('onclick', `cycleStatus(${questionId},'${status}',event)`);
+    }
 }
 
 function checkEmptyState() {
@@ -333,6 +342,11 @@ function buildCard(q, num, isOpen = false) {
             ${pointsHtml}
             ${codeHtml}
             <div class="q-card-foot">
+                <button class="status-btn ${meta.cls} status-btn-foot" data-qid="foot-${q.id}" data-status="${status}"
+                    onclick="cycleStatus(${q.id},'${status}',event)"
+                    title="Mark as ${STATUS_CYCLE[status]}">
+                    <i class="bi ${meta.icon}"></i><span>${meta.label}</span>
+                </button>
                 <button class="btn-sm" onclick="openEditQuestion(${q.id})"><i class="bi bi-pencil"></i> Edit</button>
                 <button class="btn-sm danger" onclick="deleteQuestion(${q.id})"><i class="bi bi-trash"></i> Delete</button>
             </div>

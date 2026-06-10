@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Interview Prep Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
@@ -16,78 +16,119 @@
 </head>
 <body>
 
+<!-- Sidebar backdrop (mobile overlay) -->
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
+
+<!-- ── Topbar ── -->
 <div class="topbar">
+  <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle Topics">
+    <i class="bi bi-list"></i>
+  </button>
   <div class="topbar-brand">
     <div class="brand-icon"><i class="bi bi-mortarboard-fill"></i></div>
-    Interview Prep Hub
+    <span class="brand-text">Interview Prep Hub</span>
   </div>
   <div class="topbar-search">
     <i class="bi bi-search si"></i>
-    <input id="searchInput" type="text" placeholder="Search questions across all topics…">
+    <input id="searchInput" type="text" placeholder="Search questions…" autocomplete="off">
   </div>
   <div class="topbar-actions">
-    <button class="btn-icon" onclick="openAddTopic()" title="Add Topic"><i class="bi bi-plus-lg"></i></button>
+    <button class="btn-add" onclick="openAddQuestion()" id="topAddQBtn" style="display:none" title="Add Question">
+      <i class="bi bi-plus-lg"></i><span class="btn-label"> Add Q</span>
+    </button>
+    <button class="btn-icon" onclick="openAddTopic()" title="Add Topic">
+      <i class="bi bi-folder-plus"></i>
+    </button>
   </div>
 </div>
 
+<!-- ── Layout ── -->
 <div class="layout">
-  <div class="sidebar">
+
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="sidebar-title">Topics</span>
-      <button class="btn-icon sm" onclick="openAddTopic()"><i class="bi bi-plus"></i></button>
+      <button class="btn-icon sm" onclick="openAddTopic()" title="New Topic"><i class="bi bi-plus"></i></button>
     </div>
     <div class="sidebar-list" id="topicList"></div>
   </div>
 
+  <!-- Main -->
   <div class="main">
     <div id="mainHeader" class="main-header" style="display:none">
-      <div class="main-title">
-        <span id="mainIcon" style="margin-right:10px"></span>
-        <span id="mainTitle"></span>
+      <div class="main-title-row">
+        <button class="back-btn" id="backBtn" onclick="closeSidebar()" title="Topics">
+          <i class="bi bi-chevron-left"></i>
+        </button>
+        <div class="main-title">
+          <span id="mainIcon" style="margin-right:8px"></span>
+          <span id="mainTitle"></span>
+        </div>
       </div>
     </div>
 
     <div id="filterRow" class="filter-row" style="display:none">
-      <!-- Difficulty filters -->
-      <button class="diff-pill active" data-f="all"          onclick="filterQuestions('all',this)">All</button>
-      <button class="diff-pill beg"   data-f="beginner"      onclick="filterQuestions('beginner',this)">Beginner</button>
-      <button class="diff-pill int"   data-f="intermediate"  onclick="filterQuestions('intermediate',this)">Intermediate</button>
-      <button class="diff-pill adv"   data-f="advanced"      onclick="filterQuestions('advanced',this)">Advanced</button>
-
-      <div class="filter-divider"></div>
-
-      <!-- Practice status filters -->
-      <button class="status-pill sp-new active" data-s="all" onclick="filterByStatus('all',this)">
-        <i class="bi bi-circle"></i> All Status
-      </button>
-      <button class="status-pill sp-new" data-s="new" onclick="filterByStatus('new',this)">
-        <i class="bi bi-circle"></i> New
-      </button>
-      <button class="status-pill sp-reading" data-s="reading" onclick="filterByStatus('reading',this)">
-        <i class="bi bi-book-half"></i> Reading
-      </button>
-      <button class="status-pill sp-done" data-s="done" onclick="filterByStatus('done',this)">
-        <i class="bi bi-check-circle-fill"></i> Done
-      </button>
-
-      <div style="margin-left:auto">
-        <button class="btn-add" id="addQBtn" onclick="openAddQuestion()" style="display:none">
-          <i class="bi bi-plus-lg"></i> Add Question
+      <div class="filter-scroll-inner">
+        <button class="diff-pill active" data-f="all"         onclick="filterQuestions('all',this)">All</button>
+        <button class="diff-pill beg"   data-f="beginner"     onclick="filterQuestions('beginner',this)">Beginner</button>
+        <button class="diff-pill int"   data-f="intermediate" onclick="filterQuestions('intermediate',this)">Intermediate</button>
+        <button class="diff-pill adv"   data-f="advanced"     onclick="filterQuestions('advanced',this)">Advanced</button>
+        <div class="filter-divider"></div>
+        <button class="status-pill sp-new active" data-s="all" onclick="filterByStatus('all',this)">
+          <i class="bi bi-circle"></i> All
+        </button>
+        <button class="status-pill sp-new" data-s="new" onclick="filterByStatus('new',this)">
+          <i class="bi bi-circle"></i> New
+        </button>
+        <button class="status-pill sp-reading" data-s="reading" onclick="filterByStatus('reading',this)">
+          <i class="bi bi-book-half"></i> Reading
+        </button>
+        <button class="status-pill sp-done" data-s="done" onclick="filterByStatus('done',this)">
+          <i class="bi bi-check-circle-fill"></i> Done
+        </button>
+        <button class="btn-add filter-add-btn" id="addQBtn" onclick="openAddQuestion()" style="display:none">
+          <i class="bi bi-plus-lg"></i><span> Add Question</span>
         </button>
       </div>
     </div>
 
     <div id="welcomeScreen" class="welcome">
       <div class="welcome-icon"><i class="bi bi-journal-bookmark"></i></div>
-      <h2>Select a Topic</h2>
-      <p>Choose a topic from the sidebar to browse questions, or add a new topic to get started.</p>
+      <h2>Interview Prep Hub</h2>
+      <p>Tap <strong><i class="bi bi-list"></i> Topics</strong> to pick a topic, or add a new one to get started.</p>
+      <button class="btn-add" onclick="toggleSidebar()" style="margin-top:8px">
+        <i class="bi bi-layout-sidebar"></i> Browse Topics
+      </button>
     </div>
 
     <div id="qScroll" class="q-scroll" style="display:none"></div>
   </div>
 </div>
 
-<!-- Topic Modal -->
+<!-- Mobile bottom nav -->
+<nav class="mobile-bottom-nav" id="mobileBottomNav">
+  <div class="mobile-bottom-nav-inner">
+  <button class="mbn-btn" onclick="toggleSidebar()">
+    <i class="bi bi-journals"></i>
+    <span>Topics</span>
+  </button>
+  <button class="mbn-btn" id="mbnSearch" onclick="focusSearch()">
+    <i class="bi bi-search"></i>
+    <span>Search</span>
+  </button>
+  <button class="mbn-btn mbn-add" onclick="openAddQuestion()" id="mbnAddQ" style="display:none">
+    <i class="bi bi-plus-lg"></i>
+    <span>Add Q</span>
+  </button>
+  <button class="mbn-btn" onclick="openAddTopic()">
+    <i class="bi bi-folder-plus"></i>
+    <span>Add Topic</span>
+  </button>
+  </div>
+</nav>
+
+<!-- ── Topic Modal ── -->
 <div class="modal fade" id="topicModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -124,7 +165,7 @@
   </div>
 </div>
 
-<!-- Question Modal -->
+<!-- ── Question Modal ── -->
 <div class="modal fade" id="qModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-xl">
     <div class="modal-content">
@@ -202,6 +243,26 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/shell/shell.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<script>
+function toggleSidebar() {
+  const s = document.getElementById('sidebar');
+  const b = document.getElementById('sidebarBackdrop');
+  const open = s.classList.toggle('open');
+  b.classList.toggle('visible', open);
+  document.body.classList.toggle('sidebar-open', open);
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarBackdrop').classList.remove('visible');
+  document.body.classList.remove('sidebar-open');
+}
+function focusSearch() {
+  const inp = document.getElementById('searchInput');
+  inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  inp.focus();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+</script>
 <script src="scripts.js"></script>
 </body>
 </html>
