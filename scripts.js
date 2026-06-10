@@ -269,11 +269,14 @@ function renderQuestions(questions, topicId) {
     }, { passive: true });
 
     setTimeout(() => {
-        if (savedScroll) {
-            scroll.scrollTop = parseInt(savedScroll);
-        } else if (savedOpenId) {
+        if (savedOpenId) {
+            // ── RESTORE: scroll so the saved-open card's top sits 16px from top of #qScroll ──
             const openCard = document.getElementById('qcard-' + savedOpenId);
-            if (openCard) openCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            if (openCard) {
+                scroll.scrollTop = Math.max(0, openCard.offsetTop - 220);
+            }
+        } else if (savedScroll) {
+            scroll.scrollTop = parseInt(savedScroll);
         }
     }, 80);
 }
@@ -370,6 +373,19 @@ function toggleCard(id) {
         clicked.classList.add('open');
         clicked.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
         localStorage.setItem(LS_OPEN_CARD, String(id));
+
+        // ── SCROLL so the opened card's top sits 16px from the top of #qScroll ──
+        const scrollEl = document.getElementById('qScroll');
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const target = Math.max(0, clicked.offsetTop - 220);
+                scrollEl.scrollTo({ top: target, behavior: 'smooth' });
+                if (activeTopic) {
+                    localStorage.setItem(LS_SCROLL + '_' + activeTopic.id, target);
+                }
+            });
+        });
+
     } else {
         clicked.classList.remove('open');
         localStorage.removeItem(LS_OPEN_CARD);
@@ -404,7 +420,7 @@ function copyCode(btn) {
     const code = btn.closest('.code-block').querySelector('code').innerText;
     navigator.clipboard.writeText(code).then(() => {
         btn.innerHTML = '<i class="bi bi-check2"></i> Copied!';
-        setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy', 1800);
+        setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy', 2000);
     });
 }
 
