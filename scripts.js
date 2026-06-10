@@ -13,6 +13,7 @@ const LS_FILTER        = 'prep_active_filter';
 const LS_STATUS_FILTER = 'prep_status_filter';
 const LS_SCROLL        = 'prep_scroll_pos';
 const LS_STATUS_PREFIX = 'prep_status_';
+const LS_OPEN_CARD     = 'prep_open_card';
 
 async function req(action, method = 'GET', body = null, params = {}) {
     const url = new URL(API, location.href);
@@ -24,7 +25,6 @@ async function req(action, method = 'GET', body = null, params = {}) {
     return res.json();
 }
 
-// ── Status localStorage helpers ─────────────────────────────────────────────
 function getLocalStatus(questionId) {
     return localStorage.getItem(LS_STATUS_PREFIX + questionId) || null;
 }
@@ -40,12 +40,11 @@ function applyLocalStatuses(questions) {
     });
 }
 
-// ── Status cycle: new → reading → done → new ────────────────────────────────
 const STATUS_CYCLE = { new: 'reading', reading: 'done', done: 'new' };
 const STATUS_META  = {
-    new:     { label: 'New',      icon: 'bi-circle',        cls: 'status-new' },
-    reading: { label: 'Reading',  icon: 'bi-book-half',     cls: 'status-reading' },
-    done:    { label: 'Done',     icon: 'bi-check-circle-fill', cls: 'status-done' },
+    new:     { label: 'New',     icon: 'bi-circle',            cls: 'status-new' },
+    reading: { label: 'Reading', icon: 'bi-book-half',         cls: 'status-reading' },
+    done:    { label: 'Done',    icon: 'bi-check-circle-fill', cls: 'status-done' },
 };
 
 async function cycleStatus(questionId, currentStatus, event) {
@@ -56,32 +55,27 @@ async function cycleStatus(questionId, currentStatus, event) {
 
     btn.classList.add('status-animating');
 
-    // Optimistic UI update
     setLocalStatus(questionId, next);
     if (allQuestionsCache[activeTopic?.id]) {
         const q = allQuestionsCache[activeTopic.id].find(x => x.id == questionId);
         if (q) q.status = next;
     }
-    applyStatusToBtn(btn, next);
+    applyStatusToBtn(btn, questionId, next);
 
-    // Persist to server
     try {
         await req('update_status', 'POST', { id: questionId, status: next });
     } catch (_) {}
 
     setTimeout(() => btn.classList.remove('status-animating'), 420);
 
-    // Animate card border flash
     const card = document.getElementById('qcard-' + questionId);
     if (card) {
         card.classList.add('status-flash-' + next);
         setTimeout(() => card.classList.remove('status-flash-new', 'status-flash-reading', 'status-flash-done'), 700);
     }
 
-    // Update sidebar progress bar
     updateTopicProgress(activeTopic?.id);
 
-    // If filtering by status, remove card smoothly if it no longer matches
     if (activeStatusFilter !== 'all' && next !== activeStatusFilter) {
         if (card) {
             card.style.transition = 'opacity .35s, transform .35s';
@@ -95,12 +89,13 @@ async function cycleStatus(questionId, currentStatus, event) {
     }
 }
 
-function applyStatusToBtn(btn, status) {
+function applyStatusToBtn(btn, questionId, status) {
     const meta = STATUS_META[status] || STATUS_META.new;
     btn.dataset.status = status;
     btn.className = `status-btn ${meta.cls}`;
     btn.innerHTML = `<i class="bi ${meta.icon}"></i><span>${meta.label}</span>`;
     btn.title = `Mark as ${STATUS_CYCLE[status]}`;
+    btn.setAttribute('onclick', `cycleStatus(${questionId},'${status}',event)`);
 }
 
 function checkEmptyState() {
@@ -131,7 +126,6 @@ function updateTopicProgress(topicId) {
     }
 }
 
-// ── Topics ───────────────────────────────────────────────────────────────────
 async function loadTopics() {
     const r = await req('get_topics');
     if (!r.success) return;
@@ -147,9 +141,9 @@ function saveState() {
 }
 
 function restoreState() {
-    const savedTopicId     = localStorage.getItem(LS_TOPIC);
-    const savedFilter      = localStorage.getItem(LS_FILTER) || 'all';
-    const savedStatusFilter= localStorage.getItem(LS_STATUS_FILTER) || 'all';
+    const savedTopicId      = localStorage.getItem(LS_TOPIC);
+    const savedFilter       = localStorage.getItem(LS_FILTER) || 'all';
+    const savedStatusFilter = localStorage.getItem(LS_STATUS_FILTER) || 'all';
     if (savedTopicId) {
         const t = topics.find(x => x.id == savedTopicId);
         if (t) {
@@ -206,10 +200,13 @@ function renderTopics() {
 }
 
 function selectTopic(t, skipSave) {
+    const prevTopicId = activeTopic?.id;
     activeTopic = t;
     if (!skipSave) {
         activeFilter       = 'all';
         activeStatusFilter = 'all';
+        localStorage.removeItem(LS_OPEN_CARD);
+        if (prevTopicId && prevTopicId !== t.id) localStorage.removeItem(LS_SCROLL + '_' + prevTopicId);
         document.querySelectorAll('.diff-pill').forEach(p => p.classList.remove('active'));
         document.querySelector('.diff-pill[data-f="all"]')?.classList.add('active');
         document.querySelectorAll('.status-pill').forEach(p => p.classList.remove('active'));
@@ -219,15 +216,14 @@ function selectTopic(t, skipSave) {
     loadQuestions(t.id);
     document.getElementById('mainTitle').textContent = t.name;
     document.getElementById('mainIcon').innerHTML = `<i class="bi ${t.icon}" style="color:${t.color}"></i>`;
-    document.getElementById('addQBtn').style.display      = 'inline-flex';
-    document.getElementById('mainHeader').style.display   = 'block';
-    document.getElementById('filterRow').style.display    = 'flex';
-    document.getElementById('welcomeScreen').style.display= 'none';
-    document.getElementById('qScroll').style.display      = 'block';
+    document.getElementById('addQBtn').style.display       = 'inline-flex';
+    document.getElementById('mainHeader').style.display    = 'block';
+    document.getElementById('filterRow').style.display     = 'flex';
+    document.getElementById('welcomeScreen').style.display = 'none';
+    document.getElementById('qScroll').style.display       = 'block';
     saveState();
 }
 
-// ── Questions ────────────────────────────────────────────────────────────────
 async function loadQuestions(topicId) {
     const scroll = document.getElementById('qScroll');
     scroll.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
@@ -237,14 +233,12 @@ async function loadQuestions(topicId) {
         return;
     }
     allQuestionsCache[topicId] = applyLocalStatuses(r.data);
-    renderQuestions(allQuestionsCache[topicId]);
+    renderQuestions(allQuestionsCache[topicId], topicId);
     updateTopicProgress(topicId);
     renderTopics();
-    const savedScroll = localStorage.getItem(LS_SCROLL + '_' + topicId);
-    if (savedScroll) setTimeout(() => scroll.scrollTop = parseInt(savedScroll), 80);
 }
 
-function renderQuestions(questions) {
+function renderQuestions(questions, topicId) {
     const scroll = document.getElementById('qScroll');
     let filtered = activeFilter === 'all' ? questions : questions.filter(q => q.difficulty === activeFilter);
     if (activeStatusFilter !== 'all') filtered = filtered.filter(q => (getLocalStatus(q.id) || q.status) === activeStatusFilter);
@@ -253,15 +247,29 @@ function renderQuestions(questions) {
         scroll.innerHTML = '<div class="empty-state"><i class="bi bi-inbox"></i><p>No questions found for this filter.</p></div>';
         return;
     }
-    scroll.innerHTML = filtered.map((q, i) => buildCard(q, i + 1)).join('');
+
+    const resolvedTopicId = topicId || activeTopic?.id;
+    const savedOpenId  = localStorage.getItem(LS_OPEN_CARD);
+    const savedScroll  = resolvedTopicId ? localStorage.getItem(LS_SCROLL + '_' + resolvedTopicId) : null;
+
+    scroll.innerHTML = filtered.map((q, i) => buildCard(q, i + 1, String(q.id) === savedOpenId)).join('');
     document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
 
     scroll.addEventListener('scroll', () => {
         if (activeTopic) localStorage.setItem(LS_SCROLL + '_' + activeTopic.id, scroll.scrollTop);
     }, { passive: true });
+
+    setTimeout(() => {
+        if (savedScroll) {
+            scroll.scrollTop = parseInt(savedScroll);
+        } else if (savedOpenId) {
+            const openCard = document.getElementById('qcard-' + savedOpenId);
+            if (openCard) openCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }, 80);
 }
 
-function buildCard(q, num) {
+function buildCard(q, num, isOpen = false) {
     const langLabel = { python: 'Python', javascript: 'JavaScript', php: 'PHP', sql: 'SQL', bash: 'Bash', java: 'Java', text: 'Text' };
     const lang   = q.language || 'python';
     const hlLang = lang === 'bash' ? 'bash' : lang === 'text' ? 'plaintext' : lang;
@@ -305,7 +313,7 @@ function buildCard(q, num) {
         : '';
 
     return `
-    <div class="q-card status-border-${status}" id="qcard-${q.id}">
+    <div class="q-card status-border-${status}${isOpen ? ' open' : ''}" id="qcard-${q.id}">
         <div class="q-card-head" onclick="toggleCard(${q.id})">
             <div class="q-num">${num}</div>
             <div class="q-text">${esc(q.question)}</div>
@@ -332,13 +340,35 @@ function buildCard(q, num) {
     </div>`;
 }
 
+function toggleCard(id) {
+    const clicked = document.getElementById('qcard-' + id);
+    if (!clicked) return;
+
+    const isOpening = !clicked.classList.contains('open');
+
+    document.querySelectorAll('.q-card.open').forEach(card => {
+        if (card !== clicked) {
+            card.classList.remove('open');
+        }
+    });
+
+    if (isOpening) {
+        clicked.classList.add('open');
+        clicked.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+        localStorage.setItem(LS_OPEN_CARD, String(id));
+    } else {
+        clicked.classList.remove('open');
+        localStorage.removeItem(LS_OPEN_CARD);
+    }
+}
+
 function filterQuestions(f, el) {
     activeFilter = f;
     document.querySelectorAll('.diff-pill').forEach(p => p.classList.remove('active'));
     el.classList.add('active');
     saveState();
     if (activeTopic && allQuestionsCache[activeTopic.id]) {
-        renderQuestions(allQuestionsCache[activeTopic.id]);
+        renderQuestions(allQuestionsCache[activeTopic.id], activeTopic.id);
     } else if (activeTopic) {
         loadQuestions(activeTopic.id);
     }
@@ -350,17 +380,9 @@ function filterByStatus(s, el) {
     el.classList.add('active');
     saveState();
     if (activeTopic && allQuestionsCache[activeTopic.id]) {
-        renderQuestions(allQuestionsCache[activeTopic.id]);
+        renderQuestions(allQuestionsCache[activeTopic.id], activeTopic.id);
     } else if (activeTopic) {
         loadQuestions(activeTopic.id);
-    }
-}
-
-function toggleCard(id) {
-    const card = document.getElementById('qcard-' + id);
-    card.classList.toggle('open');
-    if (card.classList.contains('open')) {
-        card.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
     }
 }
 
@@ -372,7 +394,6 @@ function copyCode(btn) {
     });
 }
 
-// ── Search ───────────────────────────────────────────────────────────────────
 async function searchQuestions() {
     const q = document.getElementById('searchInput').value.trim();
     if (q.length < 2) {
@@ -412,7 +433,6 @@ function jumpToTopic(tid) {
     if (t) selectTopic(t);
 }
 
-// ── Topic CRUD ───────────────────────────────────────────────────────────────
 function openAddTopic() {
     editingTopic = null;
     document.getElementById('topicModalTitle').textContent = 'Add Topic';
@@ -478,6 +498,7 @@ async function deleteTopic(e, id) {
         if (activeTopic?.id == id) {
             activeTopic = null;
             localStorage.removeItem(LS_TOPIC);
+            localStorage.removeItem(LS_OPEN_CARD);
             document.getElementById('mainHeader').style.display    = 'none';
             document.getElementById('filterRow').style.display     = 'none';
             document.getElementById('qScroll').style.display       = 'none';
@@ -490,7 +511,6 @@ async function deleteTopic(e, id) {
     }
 }
 
-// ── Question CRUD ────────────────────────────────────────────────────────────
 function initCodeEditor() {
     const wrapper = document.getElementById('codeEditorWrapper');
     wrapper.innerHTML = '';
@@ -604,6 +624,9 @@ async function deleteQuestion(id) {
     const r = await req('delete_question', 'POST', { id });
     if (r.success) {
         Swal.fire({ icon: 'success', title: r.message, timer: 1400, showConfirmButton: false });
+        if (localStorage.getItem(LS_OPEN_CARD) === String(id)) {
+            localStorage.removeItem(LS_OPEN_CARD);
+        }
         loadTopics();
         if (activeTopic) {
             delete allQuestionsCache[activeTopic.id];
@@ -614,7 +637,6 @@ async function deleteQuestion(id) {
     }
 }
 
-// ── Utils ────────────────────────────────────────────────────────────────────
 function esc(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
