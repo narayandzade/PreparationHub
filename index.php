@@ -185,7 +185,12 @@
             <label class="form-label">Key Points <span class="label-hint">(one per line)</span></label>
             <textarea id="qPoints" class="form-control" rows="5" placeholder="Point one&#10;Point two&#10;Point three"></textarea>
           </div>
-          <div class="col-md-4">
+          <div class="col-12">
+            <label class="form-label">Example Code</label>
+            <div id="codeEditorWrapper" style="border:1.5px solid var(--border);border-radius:10px;overflow:hidden;background:#1a1e2d;"></div>
+            <textarea id="qCode" style="display:none"></textarea>
+          </div>
+           <div class="col-md-4">
             <label class="form-label">Language</label>
             <select id="qLang" class="form-select" onchange="updateEditorMode()">
               <option value="python">Python</option>
@@ -208,11 +213,6 @@
           <div class="col-md-4">
             <label class="form-label">Sort Order</label>
             <input id="qOrder" class="form-control" type="number" value="0">
-          </div>
-          <div class="col-12">
-            <label class="form-label">Example Code</label>
-            <div id="codeEditorWrapper" style="border:1.5px solid var(--border);border-radius:10px;overflow:hidden;background:#1a1e2d;"></div>
-            <textarea id="qCode" style="display:none"></textarea>
           </div>
         </div>
       </div>

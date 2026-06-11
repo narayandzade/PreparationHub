@@ -271,16 +271,28 @@ function renderQuestions(questions, topicId) {
         if (activeTopic) localStorage.setItem(LS_SCROLL + '_' + activeTopic.id, scroll.scrollTop);
     }, { passive: true });
 
-    setTimeout(() => {
-        if (savedOpenId) {
-            const openCard = document.getElementById('qcard-' + savedOpenId);
-            if (openCard) {
-                scroll.scrollTop = Math.max(0, openCard.offsetTop - 220);
-            }
-        } else if (savedScroll) {
-            scroll.scrollTop = parseInt(savedScroll);
-        }
-    }, 80);
+    if (savedOpenId) {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    const openCard = document.getElementById('qcard-' + savedOpenId);
+                    if (openCard) {
+                        const target = Math.max(0, openCard.offsetTop - 220);
+                        scroll.scrollTo({ top: target, behavior: 'smooth' });
+                        if (activeTopic) {
+                            localStorage.setItem(LS_SCROLL + '_' + activeTopic.id, target);
+                        }
+                    }
+                }, 120);
+            });
+        });
+    } else if (savedScroll) {
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                scroll.scrollTop = parseInt(savedScroll);
+            });
+        });
+    }
 }
 
 function isRichHtml(str) {
@@ -511,7 +523,9 @@ async function saveTopic() {
     bootstrap.Modal.getInstance(document.getElementById('topicModal'))?.hide();
     if (r.success) {
         Swal.fire({ icon: 'success', title: r.message, timer: 1400, showConfirmButton: false });
-        loadTopics();
+        setTimeout(() => {
+            location.reload();
+        }, 200);
     } else {
         Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#3b6ef5' });
     }
@@ -684,15 +698,14 @@ async function saveQuestion() {
     const r = await req('save_question', 'POST', body);
     bootstrap.Modal.getInstance(document.getElementById('qModal'))?.hide();
     if (r.success) {
-        Swal.fire({ icon: 'success', title: r.message, timer: 1400, showConfirmButton: false });
-        loadTopics();
-        if (activeTopic) {
-            if (preserveOpenId) {
-                localStorage.setItem(LS_OPEN_CARD, preserveOpenId);
-            }
-            delete allQuestionsCache[activeTopic.id];
-            loadQuestions(activeTopic.id);
+        if (preserveOpenId) {
+            localStorage.setItem(LS_OPEN_CARD, preserveOpenId);
+            localStorage.removeItem(LS_SCROLL + '_' + (activeTopic?.id ?? ''));
         }
+        Swal.fire({ icon: 'success', title: r.message, timer: 1400, showConfirmButton: false });
+        setTimeout(() => {
+            location.reload();
+        }, 200);
     } else {
         Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#3b6ef5' });
     }
