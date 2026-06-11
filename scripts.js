@@ -6,6 +6,7 @@ let activeStatusFilter = 'all';
 let editingQuestion = null;
 let editingTopic = null;
 let codeEditor = null;
+let quillAnswer = null;
 let allQuestionsCache = {};
 
 const LS_TOPIC         = 'prep_active_topic';
@@ -41,7 +42,7 @@ function applyLocalStatuses(questions) {
 }
 
 const STATUS_CYCLE = { new: 'reading', reading: 'done', done: 'new' };
-const STATUS_META  = {
+const STATUS_META = {
     new:     { label: 'New',     icon: 'bi-circle',            cls: 'status-new' },
     reading: { label: 'Reading', icon: 'bi-book-half',         cls: 'status-reading' },
     done:    { label: 'Done',    icon: 'bi-check-circle-fill', cls: 'status-done' },
@@ -50,7 +51,7 @@ const STATUS_META  = {
 async function cycleStatus(questionId, currentStatus, event) {
     event.stopPropagation();
     const next = STATUS_CYCLE[currentStatus] || 'new';
-    const btn  = document.querySelector(`.status-btn[data-qid="${questionId}"]`);
+    const btn = document.querySelector(`.status-btn[data-qid="${questionId}"]`);
     if (!btn) return;
 
     btn.classList.add('status-animating');
@@ -109,7 +110,7 @@ function applyStatusToBtn(btn, questionId, status) {
 
 function checkEmptyState() {
     const scroll = document.getElementById('qScroll');
-    const cards  = scroll.querySelectorAll('.q-card');
+    const cards = scroll.querySelectorAll('.q-card');
     if (!cards.length) {
         scroll.innerHTML = '<div class="empty-state"><i class="bi bi-inbox"></i><p>No questions match this filter.</p></div>';
     }
@@ -117,13 +118,13 @@ function checkEmptyState() {
 
 function updateTopicProgress(topicId) {
     if (!topicId || !allQuestionsCache[topicId]) return;
-    const qs    = allQuestionsCache[topicId];
+    const qs = allQuestionsCache[topicId];
     const total = qs.length;
     if (!total) return;
-    const done  = qs.filter(q => (getLocalStatus(q.id) || q.status) === 'done').length;
-    const pct   = Math.round((done / total) * 100);
-    const bar   = document.querySelector(`.topic-progress-bar[data-tid="${topicId}"]`);
-    const lbl   = document.querySelector(`.topic-progress-lbl[data-tid="${topicId}"]`);
+    const done = qs.filter(q => (getLocalStatus(q.id) || q.status) === 'done').length;
+    const pct = Math.round((done / total) * 100);
+    const bar = document.querySelector(`.topic-progress-bar[data-tid="${topicId}"]`);
+    const lbl = document.querySelector(`.topic-progress-lbl[data-tid="${topicId}"]`);
     if (bar) {
         bar.style.width = pct + '%';
         bar.className = `topic-progress-bar${pct === 100 ? ' complete' : ''}`;
@@ -150,13 +151,13 @@ function saveState() {
 }
 
 function restoreState() {
-    const savedTopicId      = localStorage.getItem(LS_TOPIC);
-    const savedFilter       = localStorage.getItem(LS_FILTER) || 'all';
+    const savedTopicId = localStorage.getItem(LS_TOPIC);
+    const savedFilter = localStorage.getItem(LS_FILTER) || 'all';
     const savedStatusFilter = localStorage.getItem(LS_STATUS_FILTER) || 'all';
     if (savedTopicId) {
         const t = topics.find(x => x.id == savedTopicId);
         if (t) {
-            activeFilter       = savedFilter;
+            activeFilter = savedFilter;
             activeStatusFilter = savedStatusFilter;
             selectTopic(t, true);
             const pill = document.querySelector(`.diff-pill[data-f="${savedFilter}"]`);
@@ -178,9 +179,9 @@ function renderTopics() {
     list.innerHTML = '';
     topics.forEach(t => {
         const cached = allQuestionsCache[t.id];
-        const total  = parseInt(t.question_count) || 0;
-        const done   = cached ? cached.filter(q => (getLocalStatus(q.id) || q.status) === 'done').length : 0;
-        const pct    = total ? Math.round((done / total) * 100) : 0;
+        const total = parseInt(t.question_count) || 0;
+        const done = cached ? cached.filter(q => (getLocalStatus(q.id) || q.status) === 'done').length : 0;
+        const pct = total ? Math.round((done / total) * 100) : 0;
 
         const el = document.createElement('div');
         el.className = 'topic-item' + (activeTopic?.id == t.id ? ' active' : '');
@@ -192,12 +193,12 @@ function renderTopics() {
             <div class="topic-meta">
                 <span class="topic-name">${esc(t.name)}</span>
                 <div class="topic-progress-track">
-                    <div class="topic-progress-bar${pct===100?' complete':''}" data-tid="${t.id}" style="width:${pct}%"></div>
+                    <div class="topic-progress-bar${pct === 100 ? ' complete' : ''}" data-tid="${t.id}" style="width:${pct}%"></div>
                 </div>
             </div>
             <div class="topic-right">
                 <span class="topic-count">${t.question_count}</span>
-                <span class="topic-progress-lbl" data-tid="${t.id}">${done ? done+'/'+total : ''}</span>
+                <span class="topic-progress-lbl" data-tid="${t.id}">${done ? done + '/' + total : ''}</span>
             </div>
             <div class="topic-actions">
                 <button onclick="openEditTopic(event,${t.id})" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -212,7 +213,7 @@ function selectTopic(t, skipSave) {
     const prevTopicId = activeTopic?.id;
     activeTopic = t;
     if (!skipSave) {
-        activeFilter       = 'all';
+        activeFilter = 'all';
         activeStatusFilter = 'all';
         localStorage.removeItem(LS_OPEN_CARD);
         if (prevTopicId && prevTopicId !== t.id) localStorage.removeItem(LS_SCROLL + '_' + prevTopicId);
@@ -225,11 +226,13 @@ function selectTopic(t, skipSave) {
     loadQuestions(t.id);
     document.getElementById('mainTitle').textContent = t.name;
     document.getElementById('mainIcon').innerHTML = `<i class="bi ${t.icon}" style="color:${t.color}"></i>`;
-    document.getElementById('addQBtn').style.display       = 'inline-flex';
-    document.getElementById('mainHeader').style.display    = 'block';
-    document.getElementById('filterRow').style.display     = 'flex';
+    document.getElementById('addQBtn').style.display = 'inline-flex';
+    document.getElementById('topAddQBtn').style.display = 'inline-flex';
+    document.getElementById('mbnAddQ').style.display = 'flex';
+    document.getElementById('mainHeader').style.display = 'block';
+    document.getElementById('filterRow').style.display = 'flex';
     document.getElementById('welcomeScreen').style.display = 'none';
-    document.getElementById('qScroll').style.display       = 'block';
+    document.getElementById('qScroll').style.display = 'block';
     saveState();
 }
 
@@ -258,8 +261,8 @@ function renderQuestions(questions, topicId) {
     }
 
     const resolvedTopicId = topicId || activeTopic?.id;
-    const savedOpenId  = localStorage.getItem(LS_OPEN_CARD);
-    const savedScroll  = resolvedTopicId ? localStorage.getItem(LS_SCROLL + '_' + resolvedTopicId) : null;
+    const savedOpenId = localStorage.getItem(LS_OPEN_CARD);
+    const savedScroll = resolvedTopicId ? localStorage.getItem(LS_SCROLL + '_' + resolvedTopicId) : null;
 
     scroll.innerHTML = filtered.map((q, i) => buildCard(q, i + 1, String(q.id) === savedOpenId)).join('');
     document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
@@ -270,7 +273,6 @@ function renderQuestions(questions, topicId) {
 
     setTimeout(() => {
         if (savedOpenId) {
-            // ── RESTORE: scroll so the saved-open card's top sits 16px from top of #qScroll ──
             const openCard = document.getElementById('qcard-' + savedOpenId);
             if (openCard) {
                 scroll.scrollTop = Math.max(0, openCard.offsetTop - 220);
@@ -281,23 +283,32 @@ function renderQuestions(questions, topicId) {
     }, 80);
 }
 
+function isRichHtml(str) {
+    return /<(p|ul|ol|li|strong|em|h[123]|blockquote|br)[^>]*>/i.test(str);
+}
+
 function buildCard(q, num, isOpen = false) {
     const langLabel = { python: 'Python', javascript: 'JavaScript', php: 'PHP', sql: 'SQL', bash: 'Bash', java: 'Java', text: 'Text' };
-    const lang   = q.language || 'python';
+    const lang = q.language || 'python';
     const hlLang = lang === 'bash' ? 'bash' : lang === 'text' ? 'plaintext' : lang;
     const status = getLocalStatus(q.id) || q.status || 'new';
-    const meta   = STATUS_META[status] || STATUS_META.new;
+    const meta = STATUS_META[status] || STATUS_META.new;
 
     let answerHtml = '';
     if (q.answer) {
-        const paragraphs = q.answer.split(/\n\n+/).filter(p => p.trim());
-        answerHtml = paragraphs.map(para => {
-            const trimmed = para.trim();
-            if (trimmed.startsWith('```') || /^(def |class |import |from |SELECT |INSERT |UPDATE |function |<\?php)/.test(trimmed)) {
-                return `<div class="inline-code-wrap"><pre style="background:#1a1e2d;padding:12px 14px;border-radius:8px;font-family:var(--mono);font-size:.8rem;line-height:1.7;color:#c9d1d9;overflow-x:auto;margin:8px 0">${esc(trimmed.replace(/^```\w*\n?/, '').replace(/```$/, '').trim())}</pre></div>`;
-            }
-            return `<p style="font-size:.9rem;line-height:1.78;color:#2d3a4f;margin:0 0 8px">${esc(trimmed).replace(/\n/g, '<br>')}</p>`;
-        }).join('');
+        if (isRichHtml(q.answer)) {
+            answerHtml = `<div class="q-answer rich-answer">${q.answer}</div>`;
+        } else {
+            const paragraphs = q.answer.split(/\n\n+/).filter(p => p.trim());
+            const rendered = paragraphs.map(para => {
+                const trimmed = para.trim();
+                if (trimmed.startsWith('```') || /^(def |class |import |from |SELECT |INSERT |UPDATE |function |<\?php)/.test(trimmed)) {
+                    return `<div class="inline-code-wrap"><pre style="background:#1a1e2d;padding:12px 14px;border-radius:8px;font-family:var(--mono);font-size:.8rem;line-height:1.7;color:#c9d1d9;overflow-x:auto;margin:8px 0">${esc(trimmed.replace(/^```\w*\n?/, '').replace(/```$/, '').trim())}</pre></div>`;
+                }
+                return `<p style="font-size:.9rem;line-height:1.78;color:#2d3a4f;margin:0 0 8px">${esc(trimmed).replace(/\n/g, '<br>')}</p>`;
+            }).join('');
+            answerHtml = `<div class="q-answer">${rendered}</div>`;
+        }
     }
 
     const pointsHtml = q.points?.length
@@ -340,7 +351,7 @@ function buildCard(q, num, isOpen = false) {
             </div>
         </div>
         <div class="q-card-body">
-            ${q.answer ? `<div class="q-section"><div class="q-section-label">Answer</div><div class="q-answer">${answerHtml}</div></div>` : ''}
+            ${q.answer ? `<div class="q-section"><div class="q-section-label">Answer</div>${answerHtml}</div>` : ''}
             ${descHtml}
             ${pointsHtml}
             ${codeHtml}
@@ -364,9 +375,7 @@ function toggleCard(id) {
     const isOpening = !clicked.classList.contains('open');
 
     document.querySelectorAll('.q-card.open').forEach(card => {
-        if (card !== clicked) {
-            card.classList.remove('open');
-        }
+        if (card !== clicked) card.classList.remove('open');
     });
 
     if (isOpening) {
@@ -374,7 +383,6 @@ function toggleCard(id) {
         clicked.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
         localStorage.setItem(LS_OPEN_CARD, String(id));
 
-        // ── SCROLL so the opened card's top sits 16px from the top of #qScroll ──
         const scrollEl = document.getElementById('qScroll');
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
@@ -385,7 +393,6 @@ function toggleCard(id) {
                 }
             });
         });
-
     } else {
         clicked.classList.remove('open');
         localStorage.removeItem(LS_OPEN_CARD);
@@ -432,9 +439,9 @@ async function searchQuestions() {
     }
     const scroll = document.getElementById('qScroll');
     document.getElementById('welcomeScreen').style.display = 'none';
-    document.getElementById('mainHeader').style.display    = 'none';
-    document.getElementById('filterRow').style.display     = 'none';
-    document.getElementById('qScroll').style.display       = 'block';
+    document.getElementById('mainHeader').style.display = 'none';
+    document.getElementById('filterRow').style.display = 'none';
+    document.getElementById('qScroll').style.display = 'block';
     scroll.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
     const r = await req('search', 'GET', null, { q });
     if (!r.success) {
@@ -448,7 +455,7 @@ async function searchQuestions() {
     scroll.innerHTML = `<div style="padding:0 0 14px;font-size:.8rem;color:var(--muted);font-weight:600">${r.data.length} result(s) for "<b style="color:var(--text)">${esc(q)}</b>"</div>` +
         r.data.map(item => {
             const status = getLocalStatus(item.id) || item.status || 'new';
-            const meta   = STATUS_META[status];
+            const meta = STATUS_META[status];
             return `<div class="search-result-card" onclick="jumpToTopic(${item.topic_id})">
                 <div class="search-result-topic">${esc(item.topic_name)}</div>
                 <div class="search-result-q">${esc(item.question)}</div>
@@ -466,9 +473,9 @@ function jumpToTopic(tid) {
 function openAddTopic() {
     editingTopic = null;
     document.getElementById('topicModalTitle').textContent = 'Add Topic';
-    document.getElementById('topicId').value    = '';
-    document.getElementById('topicName').value  = '';
-    document.getElementById('topicIcon').value  = 'bi-folder';
+    document.getElementById('topicId').value = '';
+    document.getElementById('topicName').value = '';
+    document.getElementById('topicIcon').value = 'bi-folder';
     document.getElementById('topicColor').value = '#3b6ef5';
     document.getElementById('topicOrder').value = '0';
     new bootstrap.Modal(document.getElementById('topicModal')).show();
@@ -480,9 +487,9 @@ function openEditTopic(e, id) {
     if (!t) return;
     editingTopic = t;
     document.getElementById('topicModalTitle').textContent = 'Edit Topic';
-    document.getElementById('topicId').value    = t.id;
-    document.getElementById('topicName').value  = t.name;
-    document.getElementById('topicIcon').value  = t.icon;
+    document.getElementById('topicId').value = t.id;
+    document.getElementById('topicName').value = t.name;
+    document.getElementById('topicIcon').value = t.icon;
     document.getElementById('topicColor').value = t.color;
     document.getElementById('topicOrder').value = t.sort_order;
     new bootstrap.Modal(document.getElementById('topicModal')).show();
@@ -490,10 +497,10 @@ function openEditTopic(e, id) {
 
 async function saveTopic() {
     const body = {
-        id:         document.getElementById('topicId').value || null,
-        name:       document.getElementById('topicName').value.trim(),
-        icon:       document.getElementById('topicIcon').value.trim() || 'bi-folder',
-        color:      document.getElementById('topicColor').value,
+        id: document.getElementById('topicId').value || null,
+        name: document.getElementById('topicName').value.trim(),
+        icon: document.getElementById('topicIcon').value.trim() || 'bi-folder',
+        color: document.getElementById('topicColor').value,
         sort_order: document.getElementById('topicOrder').value,
     };
     if (!body.name) {
@@ -529,16 +536,55 @@ async function deleteTopic(e, id) {
             activeTopic = null;
             localStorage.removeItem(LS_TOPIC);
             localStorage.removeItem(LS_OPEN_CARD);
-            document.getElementById('mainHeader').style.display    = 'none';
-            document.getElementById('filterRow').style.display     = 'none';
-            document.getElementById('qScroll').style.display       = 'none';
+            document.getElementById('mainHeader').style.display = 'none';
+            document.getElementById('filterRow').style.display = 'none';
+            document.getElementById('qScroll').style.display = 'none';
             document.getElementById('welcomeScreen').style.display = 'flex';
-            document.getElementById('addQBtn').style.display       = 'none';
+            document.getElementById('addQBtn').style.display = 'none';
+            document.getElementById('topAddQBtn').style.display = 'none';
+            document.getElementById('mbnAddQ').style.display = 'none';
         }
         loadTopics();
     } else {
         Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#3b6ef5' });
     }
+}
+
+function initQuillEditor() {
+    if (quillAnswer) {
+        quillAnswer.setContents([]);
+        return;
+    }
+    quillAnswer = new Quill('#quillAnswerEditor', {
+        theme: 'snow',
+        placeholder: 'Write a clear, concise answer…',
+        modules: {
+            toolbar: [
+                [{ header: [1, 2, 3, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ list: 'ordered' }, { list: 'bullet' }],
+                ['blockquote', 'code-block'],
+                [{ indent: '-1' }, { indent: '+1' }],
+                ['clean']
+            ]
+        }
+    });
+}
+
+function setQuillContent(html) {
+    if (!quillAnswer) return;
+    if (html && html.trim()) {
+        quillAnswer.root.innerHTML = html;
+    } else {
+        quillAnswer.setContents([]);
+    }
+}
+
+function getQuillContent() {
+    if (!quillAnswer) return '';
+    const html = quillAnswer.root.innerHTML;
+    if (html === '<p><br></p>' || !html.trim()) return '';
+    return html;
 }
 
 function initCodeEditor() {
@@ -570,18 +616,20 @@ function openAddQuestion() {
     if (!activeTopic) return;
     editingQuestion = null;
     document.getElementById('qModalTitle').textContent = 'Add Question';
-    document.getElementById('qId').value         = '';
-    document.getElementById('qTopicId').value    = activeTopic.id;
-    document.getElementById('qQuestion').value   = '';
-    document.getElementById('qAnswer').value     = '';
-    document.getElementById('qPoints').value     = '';
-    document.getElementById('qCode').value       = '';
+    document.getElementById('qId').value = '';
+    document.getElementById('qTopicId').value = activeTopic.id;
+    document.getElementById('qQuestion').value = '';
+    document.getElementById('qAnswer').value = '';
+    document.getElementById('qPoints').value = '';
+    document.getElementById('qCode').value = '';
     document.getElementById('qDifficulty').value = 'intermediate';
-    document.getElementById('qLang').value       = 'python';
-    document.getElementById('qOrder').value      = '0';
+    document.getElementById('qLang').value = 'python';
+    document.getElementById('qOrder').value = '0';
     const modal = new bootstrap.Modal(document.getElementById('qModal'));
     modal.show();
     document.getElementById('qModal').addEventListener('shown.bs.modal', () => {
+        initQuillEditor();
+        setQuillContent('');
         initCodeEditor();
     }, { once: true });
 }
@@ -592,18 +640,20 @@ async function openEditQuestion(id) {
     const q = r.data;
     editingQuestion = q;
     document.getElementById('qModalTitle').textContent = 'Edit Question';
-    document.getElementById('qId').value         = q.id;
-    document.getElementById('qTopicId').value    = q.topic_id;
-    document.getElementById('qQuestion').value   = q.question;
-    document.getElementById('qAnswer').value     = q.answer;
+    document.getElementById('qId').value = q.id;
+    document.getElementById('qTopicId').value = q.topic_id;
+    document.getElementById('qQuestion').value = q.question;
+    document.getElementById('qAnswer').value = q.answer;
     document.getElementById('qDifficulty').value = q.difficulty;
-    document.getElementById('qPoints').value     = Array.isArray(q.points) ? q.points.join('\n') : '';
-    document.getElementById('qCode').value       = q.code_example ?? '';
-    document.getElementById('qLang').value       = q.language ?? 'python';
-    document.getElementById('qOrder').value      = q.sort_order;
+    document.getElementById('qPoints').value = Array.isArray(q.points) ? q.points.join('\n') : '';
+    document.getElementById('qCode').value = q.code_example ?? '';
+    document.getElementById('qLang').value = q.language ?? 'python';
+    document.getElementById('qOrder').value = q.sort_order;
     const modal = new bootstrap.Modal(document.getElementById('qModal'));
     modal.show();
     document.getElementById('qModal').addEventListener('shown.bs.modal', () => {
+        initQuillEditor();
+        setQuillContent(q.answer ?? '');
         initCodeEditor();
         if (codeEditor) codeEditor.setValue(q.code_example ?? '');
         updateEditorMode();
@@ -612,27 +662,34 @@ async function openEditQuestion(id) {
 
 async function saveQuestion() {
     const codeVal = codeEditor ? codeEditor.getValue() : document.getElementById('qCode').value;
+    const answerVal = getQuillContent();
     const body = {
-        id:           document.getElementById('qId').value || null,
-        topic_id:     document.getElementById('qTopicId').value,
-        question:     document.getElementById('qQuestion').value.trim(),
-        answer:       document.getElementById('qAnswer').value.trim(),
-        difficulty:   document.getElementById('qDifficulty').value,
-        language:     document.getElementById('qLang').value,
-        points:       document.getElementById('qPoints').value.trim(),
+        id: document.getElementById('qId').value || null,
+        topic_id: document.getElementById('qTopicId').value,
+        question: document.getElementById('qQuestion').value.trim(),
+        answer: answerVal,
+        difficulty: document.getElementById('qDifficulty').value,
+        language: document.getElementById('qLang').value,
+        points: document.getElementById('qPoints').value.trim(),
         code_example: codeVal.trim(),
-        sort_order:   document.getElementById('qOrder').value,
+        sort_order: document.getElementById('qOrder').value,
     };
     if (!body.question || !body.answer) {
         Swal.fire({ icon: 'warning', title: 'Question and answer are required', confirmButtonColor: '#3b6ef5' });
         return;
     }
+
+    const preserveOpenId = body.id ? String(body.id) : null;
+
     const r = await req('save_question', 'POST', body);
     bootstrap.Modal.getInstance(document.getElementById('qModal'))?.hide();
     if (r.success) {
         Swal.fire({ icon: 'success', title: r.message, timer: 1400, showConfirmButton: false });
         loadTopics();
         if (activeTopic) {
+            if (preserveOpenId) {
+                localStorage.setItem(LS_OPEN_CARD, preserveOpenId);
+            }
             delete allQuestionsCache[activeTopic.id];
             loadQuestions(activeTopic.id);
         }
@@ -669,7 +726,7 @@ async function deleteQuestion(id) {
 
 function esc(str) {
     if (!str) return '';
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 let searchDebounce;
@@ -678,10 +735,10 @@ document.getElementById('searchInput').addEventListener('input', () => {
     const v = document.getElementById('searchInput').value.trim();
     if (!v) {
         document.getElementById('mainHeader').style.display = activeTopic ? 'block' : 'none';
-        document.getElementById('filterRow').style.display  = activeTopic ? 'flex'  : 'none';
+        document.getElementById('filterRow').style.display = activeTopic ? 'flex' : 'none';
         if (activeTopic) loadQuestions(activeTopic.id);
         else {
-            document.getElementById('qScroll').style.display       = 'none';
+            document.getElementById('qScroll').style.display = 'none';
             document.getElementById('welcomeScreen').style.display = 'flex';
         }
         return;

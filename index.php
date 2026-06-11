@@ -12,14 +12,13 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- Sidebar backdrop (mobile overlay) -->
 <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
 
-<!-- ── Topbar ── -->
 <div class="topbar">
   <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle Topics">
     <i class="bi bi-list"></i>
@@ -42,10 +41,8 @@
   </div>
 </div>
 
-<!-- ── Layout ── -->
 <div class="layout">
 
-  <!-- Sidebar -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="sidebar-title">Topics</span>
@@ -54,7 +51,6 @@
     <div class="sidebar-list" id="topicList"></div>
   </div>
 
-  <!-- Main -->
   <div class="main">
     <div id="mainHeader" class="main-header" style="display:none">
       <div class="main-title-row">
@@ -106,7 +102,6 @@
   </div>
 </div>
 
-<!-- Mobile bottom nav -->
 <nav class="mobile-bottom-nav" id="mobileBottomNav">
   <div class="mobile-bottom-nav-inner">
   <button class="mbn-btn" onclick="toggleSidebar()">
@@ -128,7 +123,6 @@
   </div>
 </nav>
 
-<!-- ── Topic Modal ── -->
 <div class="modal fade" id="topicModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -165,7 +159,6 @@
   </div>
 </div>
 
-<!-- ── Question Modal ── -->
 <div class="modal fade" id="qModal" tabindex="-1">
   <div class="modal-dialog modal-dialog-centered modal-xl">
     <div class="modal-content">
@@ -183,7 +176,10 @@
           </div>
           <div class="col-12">
             <label class="form-label">Answer</label>
-            <textarea id="qAnswer" class="form-control" rows="10" placeholder="Write a clear, concise answer…" required></textarea>
+            <div id="quillAnswerWrapper">
+              <div id="quillAnswerEditor"></div>
+            </div>
+            <textarea id="qAnswer" style="display:none"></textarea>
           </div>
           <div class="col-12">
             <label class="form-label">Key Points <span class="label-hint">(one per line)</span></label>
@@ -243,6 +239,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/shell/shell.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script>
 function toggleSidebar() {
   const s = document.getElementById('sidebar');
