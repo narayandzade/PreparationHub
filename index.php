@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Python Preparation</title>
+<title>Interview Preparation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
@@ -25,7 +25,7 @@
   </button>
   <div class="topbar-brand">
     <div class="brand-icon"><i class="bi bi-mortarboard-fill"></i></div>
-    <span class="brand-text">Interview Prep Hub</span>
+    <span class="brand-text">Interview Preparation</span>
   </div>
   <div class="topbar-search">
     <i class="bi bi-search si"></i>
@@ -91,7 +91,7 @@
 
     <div id="welcomeScreen" class="welcome">
       <div class="welcome-icon"><i class="bi bi-journal-bookmark"></i></div>
-      <h2>Interview Prep Hub</h2>
+      <h2>Interview Preparation </h2>
       <p>Tap <strong><i class="bi bi-list"></i> Topics</strong> to pick a topic, or add a new one to get started.</p>
       <button class="btn-add" onclick="toggleSidebar()" style="margin-top:8px">
         <i class="bi bi-layout-sidebar"></i> Browse Topics
