@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Interview Preparation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
@@ -226,7 +227,7 @@
 <!-- Developer Watermark -->
 <div class="dev-watermark">
   <div class="dev-wm-inner">
-    <div class="dev-wm-avatar">NZ</div>
+   <div class="dev-wm-avatar"><i class="fa-solid fa-code"></i></div>
     <div class="dev-wm-info">
       <span class="dev-wm-name">Narayan Zade</span>
       <span class="dev-wm-role"><i class="bi bi-braces"></i> Python Developer</span>
