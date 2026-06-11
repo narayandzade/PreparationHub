@@ -1,4 +1,4 @@
-# 📚 Interview Prep Hub
+# 📚 Interview Preparation Hub
 
 A clean, full-stack **PHP + MySQL** single-page application for organizing and practicing interview questions by topic, difficulty, and practice status.
 
