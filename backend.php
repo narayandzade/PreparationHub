@@ -72,12 +72,12 @@ try {
             ? json_encode($body['points'])
             : json_encode(array_values(array_filter(array_map('trim', explode("\n", $body['points'] ?? '')))));
         if (!empty($body['id'])) {
-            $st = $pdo->prepare('UPDATE questions SET topic_id=?,question=?,answer=?,description=?,difficulty=?,points=?,code_example=?,sort_order=? WHERE id=?');
-            $st->execute([$body['topic_id'],$body['question'],$body['answer'],$body['description']??'',$body['difficulty']??'intermediate',$pts,$body['code_example']??'',(int)($body['sort_order']??0),$body['id']]);
+            $st = $pdo->prepare('UPDATE questions SET topic_id=?,question=?,answer=?,description=?,difficulty=?,points=?,code_example=?,language=?,sort_order=? WHERE id=?');
+            $st->execute([$body['topic_id'],$body['question'],$body['answer'],$body['description']??'',$body['difficulty']??'intermediate',$pts,$body['code_example']??'',$body['language']??'python',(int)($body['sort_order']??0),$body['id']]);
             res(['success' => true, 'message' => 'Question updated!']);
         }
-        $st = $pdo->prepare('INSERT INTO questions (topic_id,question,answer,description,difficulty,points,code_example,sort_order) VALUES (?,?,?,?,?,?,?,?)');
-        $st->execute([$body['topic_id'],$body['question'],$body['answer'],$body['description']??'',$body['difficulty']??'intermediate',$pts,$body['code_example']??'',(int)($body['sort_order']??0)]);
+        $st = $pdo->prepare('INSERT INTO questions (topic_id,question,answer,description,difficulty,points,code_example,language,sort_order) VALUES (?,?,?,?,?,?,?,?,?)');
+        $st->execute([$body['topic_id'],$body['question'],$body['answer'],$body['description']??'',$body['difficulty']??'intermediate',$pts,$body['code_example']??'',$body['language']??'python',(int)($body['sort_order']??0)]);
         res(['success' => true, 'id' => $pdo->lastInsertId(), 'message' => 'Question added!']);
     }
 
