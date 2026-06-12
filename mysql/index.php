@@ -70,7 +70,10 @@
             </div>
             <div class="editor-wrapper">
                 <div class="line-numbers" id="line-numbers"><span>1</span></div>
-                <textarea id="sql-editor" spellcheck="false" placeholder="-- Write your SQL here&#10;SELECT * FROM employees LIMIT 10;"></textarea>
+                <!-- Highlight layer (rendered HTML, pointer-events:none) -->
+                <pre class="highlight-layer" id="highlight-layer" aria-hidden="true"></pre>
+                <!-- Actual textarea on top -->
+                <textarea id="sql-editor" spellcheck="false" autocorrect="off" autocapitalize="off" placeholder="-- Write your SQL here&#10;SELECT * FROM employees LIMIT 10;"></textarea>
             </div>
         </div>
 
@@ -102,68 +105,141 @@
 <div class="toast-container" id="toast-container"></div>
 
 <script>
-const editor = document.getElementById('sql-editor');
-const lineNumbers = document.getElementById('line-numbers');
-const resultTabs = document.getElementById('result-tabs');
+/* ─── SQL SYNTAX HIGHLIGHTER ─────────────────────────────── */
+const SQL_KEYWORDS_RE = /\b(SELECT|FROM|WHERE|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+OUTER\s+JOIN|CROSS\s+JOIN|ON|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET|INSERT\s+INTO|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|DROP|ALTER|TABLE|DATABASE|INDEX|USE|SHOW|DESCRIBE|EXPLAIN|WITH|AS|UNION\s+ALL|UNION|ALL|DISTINCT|AND|OR|NOT|IN|LIKE|ILIKE|IS|NULL|EXISTS|BETWEEN|CASE|WHEN|THEN|ELSE|END|ASC|DESC|PRIMARY\s+KEY|PRIMARY|KEY|FOREIGN|REFERENCES|AUTO_INCREMENT|DEFAULT|UNIQUE|CONSTRAINT|IF\s+NOT\s+EXISTS|IF\s+EXISTS|IF|TRUNCATE|REPLACE|MERGE|PARTITION|OVER|WINDOW|RETURNING|USING|NATURAL)\b/gi;
+
+const SQL_FUNCTIONS_RE = /\b(COUNT|SUM|AVG|MIN|MAX|ROUND|FLOOR|CEIL|CEILING|ABS|MOD|POWER|SQRT|CONCAT|CONCAT_WS|LENGTH|CHAR_LENGTH|UPPER|LOWER|TRIM|LTRIM|RTRIM|SUBSTRING|SUBSTR|REPLACE|REVERSE|LOCATE|INSTR|LEFT|RIGHT|LPAD|RPAD|REPEAT|SPACE|FORMAT|CAST|CONVERT|COALESCE|IFNULL|NULLIF|ISNULL|NVL|DECODE|IIF|NOW|CURDATE|CURTIME|DATE|TIME|YEAR|MONTH|DAY|HOUR|MINUTE|SECOND|DATE_FORMAT|DATE_ADD|DATE_SUB|DATEDIFF|TIMESTAMPDIFF|TIMEDIFF|EXTRACT|UNIX_TIMESTAMP|FROM_UNIXTIME|STR_TO_DATE|TO_DATE|SYSDATE|GETDATE|CURRENT_TIMESTAMP|CURRENT_DATE|CURRENT_TIME|RANK|ROW_NUMBER|DENSE_RANK|NTILE|LEAD|LAG|FIRST_VALUE|LAST_VALUE|NTH_VALUE|CUME_DIST|PERCENT_RANK|GROUP_CONCAT|STRING_AGG|JSON_OBJECT|JSON_ARRAY|JSON_EXTRACT|JSON_UNQUOTE|JSON_SET|IF|IFNULL|GREATEST|LEAST|FIELD|FIND_IN_SET|INET_ATON|INET_NTOA|UUID|MD5|SHA1|SHA2|COMPRESS|UNCOMPRESS|AES_ENCRYPT|AES_DECRYPT|RAND|FLOOR|CEIL)\s*(?=\()/gi;
+
+const SQL_DATATYPES_RE = /\b(INT|INTEGER|BIGINT|SMALLINT|TINYINT|MEDIUMINT|FLOAT|DOUBLE|DECIMAL|NUMERIC|REAL|BIT|BOOLEAN|BOOL|CHAR|VARCHAR|TEXT|TINYTEXT|MEDIUMTEXT|LONGTEXT|BINARY|VARBINARY|BLOB|TINYBLOB|MEDIUMBLOB|LONGBLOB|DATE|TIME|DATETIME|TIMESTAMP|YEAR|ENUM|SET|JSON|GEOMETRY|POINT|LINESTRING|POLYGON|SERIAL|UNSIGNED|SIGNED|ZEROFILL|CHARACTER\s+SET|COLLATE)\b/g;
+
+function tokenizeSQL(raw) {
+    /* Escape HTML first */
+    let s = raw
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    /* We build a list of [start, end, class] spans, then apply them.
+       Process in priority order using placeholders to avoid double-wrapping. */
+
+    /* ---- pass: comments ---- */
+    s = s.replace(/(--[^\n]*)/g, (m) => `<span class="hl-comment">${m}</span>`);
+    s = s.replace(/(\/\*[\s\S]*?\*\/)/g, (m) => `<span class="hl-comment">${m}</span>`);
+
+    /* ---- pass: strings (single-quoted, double-quoted) ---- */
+    s = s.replace(/('(?:[^'\\]|\\.)*')/g, (m) => `<span class="hl-string">${m}</span>`);
+    s = s.replace(/("(?:[^"\\]|\\.)*")/g, (m) => `<span class="hl-string">${m}</span>`);
+
+    /* ---- pass: backtick identifiers ---- */
+    s = s.replace(/(`[^`]*`)/g, (m) => `<span class="hl-ident">${m}</span>`);
+
+    /* helper: only replace outside existing spans */
+    function replaceOutside(str, re, cls) {
+        /* Split on span tags, only replace in non-tag text segments */
+        return str.replace(/(<span[^>]*>[\s\S]*?<\/span>)|([^<]+)/g, (full, spanPart, textPart) => {
+            if (spanPart) return spanPart;
+            if (textPart) return textPart.replace(re, (m) => `<span class="${cls}">${m}</span>`);
+            return full;
+        });
+    }
+
+    /* ---- pass: numbers ---- */
+    s = replaceOutside(s, /\b(\d+(\.\d+)?)\b/g, 'hl-number');
+
+    /* ---- pass: functions (must come before keywords to win on IF etc.) ---- */
+    s = replaceOutside(s, SQL_FUNCTIONS_RE, 'hl-function');
+
+    /* ---- pass: keywords ---- */
+    s = replaceOutside(s, SQL_KEYWORDS_RE, 'hl-keyword');
+
+    /* ---- pass: data types ---- */
+    s = replaceOutside(s, SQL_DATATYPES_RE, 'hl-type');
+
+    /* ---- pass: operators ---- */
+    s = replaceOutside(s, /([=&lt;&gt;!]+|\*(?!\s*FROM))/g, 'hl-op');
+
+    /* ---- pass: punctuation (, ; ( ) ) ---- */
+    s = replaceOutside(s, /([,;()])/g, 'hl-punct');
+
+    return s;
+}
+
+/* ─── EDITOR WIRING ─────────────────────────────────────── */
+const editor       = document.getElementById('sql-editor');
+const lineNumbers  = document.getElementById('line-numbers');
+const highlightLayer = document.getElementById('highlight-layer');
+const resultTabs   = document.getElementById('result-tabs');
 const resultBlocks = document.getElementById('result-blocks');
-const emptyState = document.getElementById('empty-state');
-const loader = document.getElementById('loader');
+const emptyState   = document.getElementById('empty-state');
+const loader       = document.getElementById('loader');
 const elapsedBadge = document.getElementById('elapsed-badge');
-let resultsData = [];
+let resultsData    = [];
 
-const SQL_KEYWORDS = ['SELECT','FROM','WHERE','JOIN','INNER','LEFT','RIGHT','OUTER','ON','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','INSERT','INTO','VALUES','UPDATE','SET','DELETE','CREATE','DROP','ALTER','TABLE','DATABASE','INDEX','USE','SHOW','DESCRIBE','EXPLAIN','WITH','AS','UNION','ALL','DISTINCT','AND','OR','NOT','IN','LIKE','IS','NULL','EXISTS','BETWEEN','CASE','WHEN','THEN','ELSE','END','ASC','DESC','PRIMARY','KEY','FOREIGN','REFERENCES','AUTO_INCREMENT','DEFAULT','UNIQUE','CONSTRAINT','IF','COUNT','SUM','AVG','MIN','MAX','ROUND','CONCAT','COALESCE','IFNULL','NOW','CURDATE','DATE_FORMAT','TIMESTAMPDIFF','YEAR','MONTH','DAY','PARTITION','OVER','RANK','ROW_NUMBER','LEAD','LAG','EXTRACT'];
-
-function highlightSQL(sql) {
-    const escaped = sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    return escaped;
+function syncHighlight() {
+    highlightLayer.innerHTML = tokenizeSQL(editor.value) + '\n';
 }
 
 function updateLineNumbers() {
     const lines = editor.value.split('\n').length;
-    lineNumbers.innerHTML = Array.from({length: lines}, (_,i) => `<span>${i+1}</span>`).join('');
+    lineNumbers.innerHTML = Array.from({length: lines}, (_, i) => `<span>${i + 1}</span>`).join('');
 }
 
-editor.addEventListener('input', updateLineNumbers);
-editor.addEventListener('scroll', () => { lineNumbers.scrollTop = editor.scrollTop; });
+function syncScroll() {
+    highlightLayer.scrollTop  = editor.scrollTop;
+    highlightLayer.scrollLeft = editor.scrollLeft;
+    lineNumbers.scrollTop     = editor.scrollTop;
+}
+
+editor.addEventListener('input', () => { syncHighlight(); updateLineNumbers(); });
+editor.addEventListener('scroll', syncScroll);
 
 editor.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runQuery(); }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runQuery(); return; }
     if (e.key === 'Tab') {
         e.preventDefault();
         const s = editor.selectionStart, end = editor.selectionEnd;
-        editor.value = editor.value.substring(0,s) + '  ' + editor.value.substring(end);
+        editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(end);
         editor.selectionStart = editor.selectionEnd = s + 2;
-        updateLineNumbers();
+        syncHighlight(); updateLineNumbers();
     }
 });
 
+/* initial render */
+syncHighlight();
 updateLineNumbers();
 
 function clearEditor() {
     editor.value = '';
-    updateLineNumbers();
+    syncHighlight(); updateLineNumbers();
     editor.focus();
 }
 
 function formatSQL() {
     let sql = editor.value.trim();
     if (!sql) return;
-    const keywords = ['SELECT','FROM','WHERE','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN','ON','GROUP BY','ORDER BY','HAVING','LIMIT','UNION','WITH','INSERT INTO','VALUES','UPDATE','SET','DELETE FROM'];
-    keywords.forEach(kw => {
-        sql = sql.replace(new RegExp('\\b' + kw + '\\b', 'gi'), '\n' + kw);
+    const clauses = [
+        'SELECT','FROM','WHERE',
+        'LEFT JOIN','RIGHT JOIN','INNER JOIN','FULL OUTER JOIN','CROSS JOIN','JOIN',
+        'ON','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET',
+        'UNION ALL','UNION','WITH',
+        'INSERT INTO','VALUES','UPDATE','SET','DELETE FROM'
+    ];
+    clauses.forEach(kw => {
+        sql = sql.replace(new RegExp('\\b' + kw.replace(/ /g, '\\s+') + '\\b', 'gi'), '\n' + kw.toUpperCase());
     });
     sql = sql.split('\n').map(l => l.trimStart()).filter(l => l).join('\n');
     editor.value = sql;
-    updateLineNumbers();
+    syncHighlight(); updateLineNumbers();
 }
 
+/* ─── RUN QUERY ─────────────────────────────────────────── */
 async function runQuery() {
     const sql = editor.value.trim();
     if (!sql) { toast('Write a query first.', 'error'); return; }
 
     emptyState.style.display = 'none';
     resultBlocks.innerHTML = '';
-    resultTabs.innerHTML = '';
+    resultTabs.innerHTML   = '';
     elapsedBadge.textContent = '';
     loader.classList.add('show');
 
@@ -175,7 +251,7 @@ async function runQuery() {
         const fd = new FormData();
         fd.append('action', 'run_query');
         fd.append('sql', sql);
-        const res = await fetch('backend.php', { method: 'POST', body: fd });
+        const res  = await fetch('backend.php', { method: 'POST', body: fd });
         const data = await res.json();
 
         loader.classList.remove('show');
@@ -189,7 +265,7 @@ async function runQuery() {
         data.results.forEach((r, i) => renderResult(r, i));
         if (data.results.length > 0) activateTab(0);
 
-    } catch(err) {
+    } catch (err) {
         loader.classList.remove('show');
         btn.disabled = false;
         btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg> Run';
@@ -197,10 +273,13 @@ async function runQuery() {
     }
 }
 
+/* ─── RENDER RESULTS ────────────────────────────────────── */
 function renderResult(r, index) {
     const tab = document.createElement('button');
     tab.className = 'result-tab' + (r.success ? '' : ' error');
-    tab.textContent = r.success ? (r.type === 'select' ? `#${index+1} (${r.row_count} rows)` : `#${index+1} OK`) : `#${index+1} Error`;
+    tab.textContent = r.success
+        ? (r.type === 'select' ? `#${index + 1} (${r.row_count} rows)` : `#${index + 1} OK`)
+        : `#${index + 1} Error`;
     tab.onclick = () => activateTab(index);
     tab.dataset.index = index;
     resultTabs.appendChild(tab);
@@ -222,7 +301,9 @@ function renderResult(r, index) {
     } else {
         const cols = r.columns;
         const rows = r.rows;
-        let th = '<th class="row-num-cell">#</th>' + cols.map(c => `<th>${escHtml(c.name)}<span class="col-type">${colTypeLabel(c.type)}</span></th>`).join('');
+        let th = '<th class="row-num-cell">#</th>' + cols.map(c =>
+            `<th>${escHtml(c.name)}<span class="col-type">${colTypeLabel(c.type)}</span></th>`
+        ).join('');
         let tb = rows.map((row, ri) => {
             const cells = cols.map(c => {
                 const val = row[c.name];
@@ -230,7 +311,7 @@ function renderResult(r, index) {
                 const isNum = !isNaN(val) && val !== '';
                 return `<td class="${isNum ? 'num-val' : 'str-val'}" title="${escHtml(String(val))}">${escHtml(String(val))}</td>`;
             }).join('');
-            return `<tr><td class="row-num-cell">${ri+1}</td>${cells}</tr>`;
+            return `<tr><td class="row-num-cell">${ri + 1}</td>${cells}</tr>`;
         }).join('');
 
         block.innerHTML = queryBox +
@@ -253,7 +334,6 @@ function renderResult(r, index) {
                 </button>
             </div>`;
     }
-
     resultBlocks.appendChild(block);
 }
 
@@ -273,7 +353,7 @@ function renderError(query, msg) {
 }
 
 function activateTab(index) {
-    document.querySelectorAll('.result-tab').forEach((t,i) => t.classList.toggle('active', i === index));
+    document.querySelectorAll('.result-tab').forEach((t, i) => t.classList.toggle('active', i === index));
     document.querySelectorAll('.result-block').forEach(b => b.classList.remove('active'));
     const b = document.querySelector(`.result-block[data-index="${index}"]`);
     if (b) b.classList.add('active');
@@ -295,22 +375,22 @@ function exportCSV(index) {
     const rows = r.rows.map(row => r.columns.map(c => {
         const v = row[c.name];
         if (v === null) return '';
-        return '"' + String(v).replace(/"/g,'""') + '"';
+        return '"' + String(v).replace(/"/g, '""') + '"';
     }).join(','));
-    download([headers, ...rows].join('\n'), 'result_' + (index+1) + '.csv', 'text/csv');
+    download([headers, ...rows].join('\n'), 'result_' + (index + 1) + '.csv', 'text/csv');
     toast('CSV exported.', 'success');
 }
 
 function exportJSON(index) {
     const r = resultsData[index];
     if (!r || r.type !== 'select') return;
-    download(JSON.stringify(r.rows, null, 2), 'result_' + (index+1) + '.json', 'application/json');
+    download(JSON.stringify(r.rows, null, 2), 'result_' + (index + 1) + '.json', 'application/json');
     toast('JSON exported.', 'success');
 }
 
 function download(content, filename, mime) {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([content], {type: mime}));
+    a.href = URL.createObjectURL(new Blob([content], { type: mime }));
     a.download = filename;
     a.click();
 }
@@ -323,6 +403,7 @@ function toast(msg, type = 'success') {
     setTimeout(() => el.remove(), 3000);
 }
 
+/* ─── SIDEBAR PANELS ────────────────────────────────────── */
 function switchPanel(name, btn) {
     document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
@@ -330,13 +411,14 @@ function switchPanel(name, btn) {
     document.getElementById('panel-' + name).classList.add('active');
 }
 
+/* ─── SCHEMA ─────────────────────────────────────────────── */
 async function loadSchema() {
     const fd = new FormData();
     fd.append('action', 'get_schema');
     try {
-        const res = await fetch('backend.php', {method:'POST', body: fd});
+        const res  = await fetch('backend.php', { method: 'POST', body: fd });
         const data = await res.json();
-        const dot = document.getElementById('db-dot');
+        const dot  = document.getElementById('db-dot');
         const label = document.getElementById('db-label');
 
         if (!data.success) {
@@ -349,7 +431,7 @@ async function loadSchema() {
         dot.className = 'db-dot';
         label.textContent = 'practice_db';
         renderSchema(data.schema);
-    } catch(e) {
+    } catch (e) {
         document.getElementById('db-dot').className = 'db-dot offline';
         document.getElementById('db-label').textContent = 'Error';
     }
@@ -402,19 +484,23 @@ function insertCol(table, col) {
     editor.value = editor.value.substring(0, s) + sel + editor.value.substring(editor.selectionEnd);
     editor.selectionStart = editor.selectionEnd = s + sel.length;
     editor.focus();
-    updateLineNumbers();
+    syncHighlight(); updateLineNumbers();
 }
 
 function filterSchema(q) {
     if (!q) { buildSchemaList(schemaData); return; }
-    const filtered = schemaData.filter(t => t.table.toLowerCase().includes(q.toLowerCase()) || t.columns.some(c => c.field.toLowerCase().includes(q.toLowerCase())));
+    const filtered = schemaData.filter(t =>
+        t.table.toLowerCase().includes(q.toLowerCase()) ||
+        t.columns.some(c => c.field.toLowerCase().includes(q.toLowerCase()))
+    );
     buildSchemaList(filtered);
 }
 
+/* ─── SNIPPETS ───────────────────────────────────────────── */
 async function loadSnippets() {
     const fd = new FormData();
     fd.append('action', 'get_snippets');
-    const res = await fetch('backend.php', {method:'POST', body: fd});
+    const res  = await fetch('backend.php', { method: 'POST', body: fd });
     const data = await res.json();
     if (!data.success) return;
 
@@ -430,56 +516,48 @@ async function loadSnippets() {
 
 function loadSnippet(i) {
     editor.value = window._snippets[i].sql;
-    updateLineNumbers();
+    syncHighlight(); updateLineNumbers();
     editor.focus();
     toast('Snippet loaded.', 'success');
 }
 
-const resizeBar = document.getElementById('resize-bar');
+/* ─── RESIZE: vertical ───────────────────────────────────── */
+const resizeBar  = document.getElementById('resize-bar');
 const editorArea = document.getElementById('editor-area');
-let isResizing = false;
-let startY, startH;
+let isResizing = false, startY, startH;
 
 resizeBar.addEventListener('mousedown', e => {
-    isResizing = true;
-    startY = e.clientY;
-    startH = editorArea.offsetHeight;
+    isResizing = true; startY = e.clientY; startH = editorArea.offsetHeight;
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
 });
-
 document.addEventListener('mousemove', e => {
     if (!isResizing) return;
     const newH = Math.max(120, Math.min(startH + e.clientY - startY, window.innerHeight - 200));
     editorArea.style.height = newH + 'px';
     editorArea.style.flexShrink = '0';
 });
-
 document.addEventListener('mouseup', () => {
     isResizing = false;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
 });
 
+/* ─── RESIZE: sidebar ────────────────────────────────────── */
 const sidebarResize = document.getElementById('sidebar-resize');
-const sidebar = document.getElementById('sidebar');
-let isSideResizing = false;
-let startX, startW;
+const sidebar       = document.getElementById('sidebar');
+let isSideResizing = false, startX, startW;
 
 sidebarResize.addEventListener('mousedown', e => {
-    isSideResizing = true;
-    startX = e.clientX;
-    startW = sidebar.offsetWidth;
+    isSideResizing = true; startX = e.clientX; startW = sidebar.offsetWidth;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 });
-
 document.addEventListener('mousemove', e => {
     if (!isSideResizing) return;
     const w = Math.max(180, Math.min(startW + e.clientX - startX, 500));
     sidebar.style.width = w + 'px';
 });
-
 document.addEventListener('mouseup', () => {
     isSideResizing = false;
     document.body.style.cursor = '';
