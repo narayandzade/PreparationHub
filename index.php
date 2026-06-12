@@ -237,16 +237,6 @@
     </div>
   </div>
 </div>
-<!-- Developer Watermark -->
-<div class="dev-watermark">
-  <div class="dev-wm-inner">
-   <div class="dev-wm-avatar"><i class="fa-solid fa-code"></i></div>
-    <div class="dev-wm-info">
-      <span class="dev-wm-name">Narayan Zade</span>
-      <span class="dev-wm-role"><i class="bi bi-braces"></i> Python Developer</span>
-    </div>
-  </div>
-</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
