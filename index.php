@@ -4,10 +4,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Interview Preparation</title>
+<title>Interview Prep Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700;800&family=Literata:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
@@ -54,7 +54,10 @@
   </button>
   <div class="topbar-brand">
     <div class="brand-icon"><i class="bi bi-mortarboard-fill"></i></div>
-    <span class="brand-text">Interview Preparation</span>
+    <div class="brand-text">
+      <span>Interview Prep Hub</span>
+      <span class="brand-eyebrow">Study Catalog</span>
+    </div>
   </div>
   <div class="topbar-search">
     <i class="bi bi-search si"></i>
@@ -120,8 +123,8 @@
 
     <div id="welcomeScreen" class="welcome">
       <div class="welcome-icon"><i class="bi bi-journal-bookmark"></i></div>
-      <h2>Interview Preparation </h2>
-      <p>Tap <strong><i class="bi bi-list"></i> Topics</strong> to pick a topic, or add a new one to get started.</p>
+      <h2>Your next interview starts here</h2>
+      <p>Tap <strong><i class="bi bi-list"></i> Topics</strong> to open a subject, or add a new one to start building your study catalog.</p>
       <button class="btn-add" onclick="toggleSidebar()" style="margin-top:8px">
         <i class="bi bi-layout-sidebar"></i> Browse Topics
       </button>
@@ -172,7 +175,7 @@
           </div>
           <div class="col-6">
             <label class="form-label">Color</label>
-            <input id="topicColor" class="form-control" type="color" value="#3b6ef5" style="height:42px;padding:4px 8px">
+            <input id="topicColor" class="form-control" type="color" value="#2c3fce" style="height:42px;padding:4px 8px">
           </div>
         </div>
         <div class="mt-3">
@@ -216,7 +219,7 @@
           </div>
           <div class="col-12">
             <label class="form-label">Example Code</label>
-            <div id="codeEditorWrapper" style="border:1.5px solid var(--border);border-radius:10px;overflow:hidden;background:#1a1e2d;"></div>
+            <div id="codeEditorWrapper" style="border:1.5px solid var(--rule);border-radius:10px;overflow:hidden;background:#191c26;"></div>
             <textarea id="qCode" style="display:none"></textarea>
           </div>
            <div class="col-md-4">

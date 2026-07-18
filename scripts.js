@@ -488,7 +488,7 @@ function openAddTopic() {
     document.getElementById('topicId').value = '';
     document.getElementById('topicName').value = '';
     document.getElementById('topicIcon').value = 'bi-folder';
-    document.getElementById('topicColor').value = '#3b6ef5';
+    document.getElementById('topicColor').value = '#2c3fce';
     document.getElementById('topicOrder').value = '0';
     new bootstrap.Modal(document.getElementById('topicModal')).show();
 }
@@ -516,7 +516,7 @@ async function saveTopic() {
         sort_order: document.getElementById('topicOrder').value,
     };
     if (!body.name) {
-        Swal.fire({ icon: 'warning', title: 'Name required', confirmButtonColor: '#3b6ef5' });
+        Swal.fire({ icon: 'warning', title: 'Name required', confirmButtonColor: '#2c3fce' });
         return;
     }
     const r = await req('save_topic', 'POST', body);
@@ -527,7 +527,7 @@ async function saveTopic() {
             location.reload();
         }, 200);
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#3b6ef5' });
+        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#2c3fce' });
     }
 }
 
@@ -560,7 +560,7 @@ async function deleteTopic(e, id) {
         }
         loadTopics();
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#3b6ef5' });
+        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#2c3fce' });
     }
 }
 
@@ -689,7 +689,7 @@ async function saveQuestion() {
         sort_order: document.getElementById('qOrder').value,
     };
     if (!body.question || !body.answer) {
-        Swal.fire({ icon: 'warning', title: 'Question and answer are required', confirmButtonColor: '#3b6ef5' });
+        Swal.fire({ icon: 'warning', title: 'Question and answer are required', confirmButtonColor: '#2c3fce' });
         return;
     }
 
@@ -707,7 +707,7 @@ async function saveQuestion() {
             location.reload();
         }, 200);
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#3b6ef5' });
+        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#2c3fce' });
     }
 }
 
@@ -733,7 +733,7 @@ async function deleteQuestion(id) {
             loadQuestions(activeTopic.id);
         }
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#3b6ef5' });
+        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#2c3fce' });
     }
 }
 
