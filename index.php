@@ -147,7 +147,7 @@
           </div>
           <div class="col-6">
             <label class="form-label">Color</label>
-            <input id="topicColor" class="form-control" type="color" value="#2c3fce" style="height:42px;padding:4px 8px">
+            <input id="topicColor" class="form-control" type="color" value="#5b5bf5" style="height:42px;padding:4px 8px">
           </div>
         </div>
         <div class="mt-3">

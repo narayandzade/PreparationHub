@@ -140,8 +140,17 @@ async function loadTopics() {
     const r = await req('get_topics');
     if (!r.success) return;
     topics = r.data;
+    await Promise.all(topics.map(t => preloadTopicProgress(t.id)));
     renderTopics();
     restoreState();
+}
+
+async function preloadTopicProgress(topicId) {
+    if (allQuestionsCache[topicId]) return;
+    try {
+        const r = await req('get_questions', 'GET', null, { topic_id: topicId });
+        if (r.success) allQuestionsCache[topicId] = applyLocalStatuses(r.data);
+    } catch (_) {}
 }
 
 function saveState() {
@@ -250,6 +259,50 @@ async function loadQuestions(topicId) {
     renderTopics();
 }
 
+function isRichHtml(str) {
+    return /<(p|ul|ol|li|strong|em|h[123]|blockquote|br)[^>]*>/i.test(str);
+}
+
+function wrapTextNodeSentences(node) {
+    const text = node.nodeValue;
+    if (!text || !text.trim()) return;
+    const parent = node.parentNode;
+    if (!parent) return;
+    const parts = text.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g);
+    if (!parts || parts.length < 1) return;
+    const frag = document.createDocumentFragment();
+    parts.forEach(part => {
+        if (!part.trim()) {
+            frag.appendChild(document.createTextNode(part));
+            return;
+        }
+        const span = document.createElement('span');
+        span.className = 'sentence-hl';
+        span.textContent = part;
+        frag.appendChild(span);
+    });
+    parent.replaceChild(frag, node);
+}
+
+function wrapSentencesInNode(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+        wrapTextNodeSentences(node);
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const tag = node.tagName;
+        if (tag === 'PRE' || tag === 'CODE' || tag === 'SCRIPT' || tag === 'STYLE' || node.classList.contains('sentence-hl')) return;
+        Array.from(node.childNodes).forEach(wrapSentencesInNode);
+    }
+}
+
+function enhanceSentences(container) {
+    if (!container) return;
+    Array.from(container.childNodes).forEach(wrapSentencesInNode);
+}
+
+function enhanceReadableSections(root) {
+    root.querySelectorAll('.q-answer, .q-desc, .q-point').forEach(enhanceSentences);
+}
+
 function renderQuestions(questions, topicId) {
     const scroll = document.getElementById('qScroll');
     let filtered = activeFilter === 'all' ? questions : questions.filter(q => q.difficulty === activeFilter);
@@ -266,6 +319,7 @@ function renderQuestions(questions, topicId) {
 
     scroll.innerHTML = filtered.map((q, i) => buildCard(q, i + 1, String(q.id) === savedOpenId)).join('');
     document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+    enhanceReadableSections(scroll);
 
     scroll.addEventListener('scroll', () => {
         if (activeTopic) localStorage.setItem(LS_SCROLL + '_' + activeTopic.id, scroll.scrollTop);
@@ -293,10 +347,6 @@ function renderQuestions(questions, topicId) {
             });
         });
     }
-}
-
-function isRichHtml(str) {
-    return /<(p|ul|ol|li|strong|em|h[123]|blockquote|br)[^>]*>/i.test(str);
 }
 
 function buildCard(q, num, isOpen = false) {
@@ -516,7 +566,7 @@ async function saveTopic() {
         sort_order: document.getElementById('topicOrder').value,
     };
     if (!body.name) {
-        Swal.fire({ icon: 'warning', title: 'Name required', confirmButtonColor: '#2c3fce' });
+        Swal.fire({ icon: 'warning', title: 'Name required', confirmButtonColor: '#5b5bf5' });
         return;
     }
     const r = await req('save_topic', 'POST', body);
@@ -527,7 +577,7 @@ async function saveTopic() {
             location.reload();
         }, 200);
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#2c3fce' });
+        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#5b5bf5' });
     }
 }
 
@@ -539,7 +589,7 @@ async function deleteTopic(e, id) {
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Yes, delete',
-        confirmButtonColor: '#e03131',
+        confirmButtonColor: '#e15b4f',
         cancelButtonColor: '#adb5bd',
     });
     if (!result.isConfirmed) return;
@@ -560,7 +610,7 @@ async function deleteTopic(e, id) {
         }
         loadTopics();
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#2c3fce' });
+        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#5b5bf5' });
     }
 }
 
@@ -689,7 +739,7 @@ async function saveQuestion() {
         sort_order: document.getElementById('qOrder').value,
     };
     if (!body.question || !body.answer) {
-        Swal.fire({ icon: 'warning', title: 'Question and answer are required', confirmButtonColor: '#2c3fce' });
+        Swal.fire({ icon: 'warning', title: 'Question and answer are required', confirmButtonColor: '#5b5bf5' });
         return;
     }
 
@@ -707,7 +757,7 @@ async function saveQuestion() {
             location.reload();
         }, 200);
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#2c3fce' });
+        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#5b5bf5' });
     }
 }
 
@@ -717,7 +767,7 @@ async function deleteQuestion(id) {
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Delete',
-        confirmButtonColor: '#e03131',
+        confirmButtonColor: '#e15b4f',
         cancelButtonColor: '#adb5bd',
     });
     if (!result.isConfirmed) return;
@@ -733,7 +783,7 @@ async function deleteQuestion(id) {
             loadQuestions(activeTopic.id);
         }
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#2c3fce' });
+        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#5b5bf5' });
     }
 }
 
