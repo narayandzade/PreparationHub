@@ -482,7 +482,7 @@ body {
   flex-shrink: 0;
   margin-top: 1px;
 }
-.q-num::before { content: 'Q'; opacity: .5; font-weight: 400; }
+/* .q-num::before { content: 'Q'; opacity: .5; font-weight: 400; } */
 
 .q-text { flex: 1; font-family: var(--font-body); font-size: 1rem; font-weight: 500; line-height: 1.55; color: var(--ink); }
 .q-badges { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }

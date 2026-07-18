@@ -400,7 +400,7 @@ function buildCard(q, num, isOpen = false) {
     return `
     <div class="q-card status-border-${status}${isOpen ? ' open' : ''}" id="qcard-${q.id}">
         <div class="q-card-head" onclick="toggleCard(${q.id})">
-            <div class="q-num">${num}</div>
+            <div class="q-num">${q.id}</div>
             <div class="q-text">${esc(q.question)}</div>
             <div class="q-badges">
                 <button class="status-btn ${meta.cls}" data-qid="${q.id}" data-status="${status}"
