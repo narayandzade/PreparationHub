@@ -482,7 +482,7 @@ body {
   flex-shrink: 0;
   margin-top: 1px;
 }
-/* .q-num::before { content: 'Q'; opacity: .5; font-weight: 400; } */
+.q-num::before { content: 'Q'; opacity: .5; font-weight: 400; }
 
 .q-text { flex: 1; font-family: var(--font-body); font-size: 1rem; font-weight: 500; line-height: 1.55; color: var(--ink); }
 .q-badges { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
@@ -531,6 +531,26 @@ body {
 .q-answer.rich-answer h3 { font-size: 0.97rem; }
 .q-answer.rich-answer blockquote { border-left: 3px solid var(--cobalt); padding-left: 12px; color: var(--muted); margin: 0.5em 0; }
 .q-answer.rich-answer a { color: var(--cobalt); text-decoration: underline; }
+
+.q-answer-para { font-size: .9rem; line-height: 1.78; color: var(--ink-soft); margin: 0 0 10px; }
+.q-answer-para:last-child { margin-bottom: 0; }
+.q-answer-code {
+  background: #191c26;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  line-height: 1.7;
+  color: #c9d1d9;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.q-answer.rich-answer .q-answer-list,
+.q-answer.rich-answer .q-answer-sublist { list-style-type: disc; }
+.q-answer.rich-answer .q-answer-sublist { list-style-type: circle; margin-top: 4px; padding-left: 1.3em; }
+.q-answer.rich-answer .q-answer-list li,
+.q-answer.rich-answer .q-answer-sublist li { margin-bottom: 0.3em; }
 
 .q-desc   { font-family: var(--font-body); font-size: 0.88rem; line-height: 1.75; color: var(--muted); white-space: pre-wrap; font-style: italic; }
 

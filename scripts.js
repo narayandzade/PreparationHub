@@ -303,6 +303,73 @@ function enhanceReadableSections(root) {
     root.querySelectorAll('.q-answer, .q-desc, .q-point').forEach(enhanceSentences);
 }
 
+function isBlankParagraph(p) {
+    const text = (p.textContent || '').replace(/[\s\u00A0]/g, '');
+    return text.length === 0;
+}
+
+function dashBulletMatch(p) {
+    const text = p.textContent || '';
+    return text.match(/^([\u00A0]*)-\s*(.*)$/s);
+}
+
+function normalizeRichAnswer(el) {
+    const children = Array.from(el.children);
+    let i = 0;
+    while (i < children.length) {
+        const node = children[i];
+        if (node.tagName !== 'P') { i++; continue; }
+        if (isBlankParagraph(node)) {
+            node.remove();
+            i++;
+            continue;
+        }
+        const firstMatch = dashBulletMatch(node);
+        if (!firstMatch) { i++; continue; }
+
+        let j = i;
+        const items = [];
+        while (j < children.length) {
+            const n = children[j];
+            if (n.tagName !== 'P') break;
+            const m = dashBulletMatch(n);
+            if (!m) break;
+            const strippedLead = m[1].length;
+            const html = n.innerHTML.replace(/^(?:&nbsp;|\u00A0)*-\s*/, '');
+            items.push({ level: strippedLead, html });
+            j++;
+        }
+
+        const ul = document.createElement('ul');
+        ul.className = 'q-answer-list';
+        let currentTopLi = null;
+        items.forEach(it => {
+            const li = document.createElement('li');
+            li.innerHTML = it.html;
+            if (it.level > 0 && currentTopLi) {
+                let subUl = currentTopLi.querySelector(':scope > ul.q-answer-sublist');
+                if (!subUl) {
+                    subUl = document.createElement('ul');
+                    subUl.className = 'q-answer-sublist';
+                    currentTopLi.appendChild(subUl);
+                }
+                subUl.appendChild(li);
+            } else {
+                ul.appendChild(li);
+                currentTopLi = li;
+            }
+        });
+
+        el.insertBefore(ul, children[i]);
+        for (let k = i; k < j; k++) children[k].remove();
+        i = j;
+    }
+}
+
+function normalizeAnswerFormatting(root) {
+    root.querySelectorAll('.q-answer.rich-answer').forEach(normalizeRichAnswer);
+}
+
 function renderQuestions(questions, topicId) {
     const scroll = document.getElementById('qScroll');
     let filtered = activeFilter === 'all' ? questions : questions.filter(q => q.difficulty === activeFilter);
@@ -319,6 +386,7 @@ function renderQuestions(questions, topicId) {
 
     scroll.innerHTML = filtered.map((q, i) => buildCard(q, i + 1, String(q.id) === savedOpenId)).join('');
     document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+    normalizeAnswerFormatting(scroll);
     enhanceReadableSections(scroll);
 
     scroll.addEventListener('scroll', () => {
@@ -365,9 +433,9 @@ function buildCard(q, num, isOpen = false) {
             const rendered = paragraphs.map(para => {
                 const trimmed = para.trim();
                 if (trimmed.startsWith('```') || /^(def |class |import |from |SELECT |INSERT |UPDATE |function |<\?php)/.test(trimmed)) {
-                    return `<div class="inline-code-wrap"><pre style="background:#1a1e2d;padding:12px 14px;border-radius:8px;font-family:var(--mono);font-size:.8rem;line-height:1.7;color:#c9d1d9;overflow-x:auto;margin:8px 0">${esc(trimmed.replace(/^```\w*\n?/, '').replace(/```$/, '').trim())}</pre></div>`;
+                    return `<div class="inline-code-wrap"><pre class="q-answer-code">${esc(trimmed.replace(/^```\w*\n?/, '').replace(/```$/, '').trim())}</pre></div>`;
                 }
-                return `<p style="font-size:.9rem;line-height:1.78;color:#2d3a4f;margin:0 0 8px">${esc(trimmed).replace(/\n/g, '<br>')}</p>`;
+                return `<p class="q-answer-para">${esc(trimmed).replace(/\n/g, '<br>')}</p>`;
             }).join('');
             answerHtml = `<div class="q-answer">${rendered}</div>`;
         }
@@ -400,7 +468,7 @@ function buildCard(q, num, isOpen = false) {
     return `
     <div class="q-card status-border-${status}${isOpen ? ' open' : ''}" id="qcard-${q.id}">
         <div class="q-card-head" onclick="toggleCard(${q.id})">
-            <div class="q-num">${q.id}</div>
+            <div class="q-num">${num}</div>
             <div class="q-text">${esc(q.question)}</div>
             <div class="q-badges">
                 <button class="status-btn ${meta.cls}" data-qid="${q.id}" data-status="${status}"
