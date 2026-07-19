@@ -263,13 +263,27 @@ function isRichHtml(str) {
     return /<(p|ul|ol|li|strong|em|h[123]|blockquote|br)[^>]*>/i.test(str);
 }
 
+function splitIntoSentences(text) {
+    const result = [];
+    let lastIndex = 0;
+    const re = /[.!?]+(?=\s|$)/g;
+    let m;
+    while ((m = re.exec(text))) {
+        const end = m.index + m[0].length;
+        result.push(text.slice(lastIndex, end));
+        lastIndex = end;
+    }
+    if (lastIndex < text.length) result.push(text.slice(lastIndex));
+    return result;
+}
+
 function wrapTextNodeSentences(node) {
     const text = node.nodeValue;
     if (!text || !text.trim()) return;
     const parent = node.parentNode;
     if (!parent) return;
-    const parts = text.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g);
-    if (!parts || parts.length < 1) return;
+    const parts = splitIntoSentences(text);
+    if (!parts.length) return;
     const frag = document.createDocumentFragment();
     parts.forEach(part => {
         if (!part.trim()) {
