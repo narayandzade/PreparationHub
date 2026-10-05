@@ -4,11 +4,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#4b3fd1">
+<meta name="theme-color" content="#5143e8" id="metaThemeColor">
 <title>Interview Prep Hub</title>
+<script>
+/* Apply saved theme before first paint (no flash) */
+(function () {
+  try {
+    var t = localStorage.getItem('prep_theme');
+    if (!t) t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700;800&family=Literata:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Literata:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
@@ -51,7 +62,10 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="sidebar-title">Topics</span>
-      <button class="btn-icon sm" onclick="openAddTopic()" title="New Topic" aria-label="New Topic"><i class="bi bi-plus"></i></button>
+      <div class="sidebar-actions">
+        <button class="btn-icon sm" id="themeToggle" onclick="toggleTheme()" title="Switch light / dark theme" aria-label="Switch theme"><i class="bi bi-moon-stars"></i></button>
+        <button class="btn-icon sm" onclick="openAddTopic()" title="New Topic" aria-label="New Topic"><i class="bi bi-plus"></i></button>
+      </div>
     </div>
     <div class="sidebar-list" id="topicList"></div>
   </div>
@@ -106,7 +120,7 @@
         <i class="bi bi-arrow-right tip-arrow"></i>
         <span class="tip tip-done"><i class="bi bi-check-circle-fill"></i> Done</span>
       </div>
-      <p class="welcome-hint">Tap a status badge on any question to move it forward.</p>
+      <p class="welcome-hint">Tap a status badge on any question to move it forward. Every time you open an answer, its read count goes up.</p>
       <button class="btn-add" onclick="toggleSidebar()" style="margin-top:8px">
         <i class="bi bi-layout-sidebar"></i> Browse Topics
       </button>

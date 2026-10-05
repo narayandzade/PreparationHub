@@ -15,6 +15,9 @@ const LS_STATUS_FILTER = 'prep_status_filter';
 const LS_SCROLL        = 'prep_scroll_pos';
 const LS_STATUS_PREFIX = 'prep_status_';
 const LS_OPEN_CARD     = 'prep_open_card';
+const LS_THEME         = 'prep_theme';
+const LS_READS_PREFIX  = 'prep_reads_';
+const LS_LAST_PREFIX   = 'prep_lastread_';
 
 async function req(action, method = 'GET', body = null, params = {}) {
     const url = new URL(API, location.href);
@@ -26,6 +29,27 @@ async function req(action, method = 'GET', body = null, params = {}) {
     return res.json();
 }
 
+/* ---------- Theme (light / dark) ---------- */
+function applyTheme(theme, animate) {
+    const root = document.documentElement;
+    if (animate) {
+        root.classList.add('theme-anim');
+        setTimeout(() => root.classList.remove('theme-anim'), 450);
+    }
+    root.setAttribute('data-theme', theme);
+    try { localStorage.setItem(LS_THEME, theme); } catch (_) {}
+    const btn = document.getElementById('themeToggle');
+    if (btn) btn.innerHTML = theme === 'dark' ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
+    const meta = document.getElementById('metaThemeColor');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0a0e1d' : '#5143e8');
+}
+
+function toggleTheme() {
+    const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    applyTheme(cur === 'dark' ? 'light' : 'dark', true);
+}
+
+/* ---------- Status helpers ---------- */
 function getLocalStatus(questionId) {
     return localStorage.getItem(LS_STATUS_PREFIX + questionId) || null;
 }
@@ -39,6 +63,58 @@ function applyLocalStatuses(questions) {
         const local = getLocalStatus(q.id);
         return local ? { ...q, status: local } : q;
     });
+}
+
+/* ---------- NEW: read counter (how many times an answer was opened) ---------- */
+function getReadCount(id) {
+    return parseInt(localStorage.getItem(LS_READS_PREFIX + id)) || 0;
+}
+
+function getLastRead(id) {
+    return parseInt(localStorage.getItem(LS_LAST_PREFIX + id)) || 0;
+}
+
+function relTime(ts) {
+    if (!ts) return '';
+    const startOf = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+    const days = Math.round((startOf(Date.now()) - startOf(ts)) / 86400000);
+    if (days <= 0) return 'today';
+    if (days === 1) return 'yesterday';
+    return days + ' days ago';
+}
+
+function readsMetaHtml(id) {
+    const n = getReadCount(id);
+    if (!n) return '<i class="bi bi-eye-slash"></i> Not read yet';
+    return `<i class="bi bi-eye"></i> Read ${n}\u00D7 \u2022 last ${relTime(getLastRead(id))}`;
+}
+
+function readBadgeHtml(id) {
+    const n = getReadCount(id);
+    return `<span class="read-badge${n ? '' : ' is-zero'}" data-reads="${id}" title="Times you have opened this answer"><i class="bi bi-eye"></i><b>${n}</b></span>`;
+}
+
+function updateReadBadges(id) {
+    const n = getReadCount(id);
+    const badge = document.querySelector(`.read-badge[data-reads="${id}"]`);
+    if (badge) {
+        badge.classList.toggle('is-zero', !n);
+        badge.innerHTML = `<i class="bi bi-eye"></i><b>${n}</b>`;
+        badge.classList.remove('bump');
+        void badge.offsetWidth;
+        badge.classList.add('bump');
+    }
+    const meta = document.querySelector(`.q-reads[data-reads-meta="${id}"]`);
+    if (meta) meta.innerHTML = readsMetaHtml(id);
+}
+
+function bumpRead(id) {
+    try {
+        localStorage.setItem(LS_READS_PREFIX + id, String(getReadCount(id) + 1));
+        localStorage.setItem(LS_LAST_PREFIX + id, String(Date.now()));
+    } catch (_) {}
+    updateReadBadges(id);
+    if (activeTopic) updateTopicProgress(activeTopic.id);
 }
 
 const STATUS_CYCLE = { new: 'reading', reading: 'done', done: 'new' };
@@ -77,6 +153,12 @@ async function cycleStatus(questionId, currentStatus, event) {
 
     updateTopicProgress(activeTopic?.id);
 
+    /* NEW: celebrate when every question in the topic is done */
+    if (next === 'done') {
+        const qs = allQuestionsCache[activeTopic?.id] || [];
+        if (qs.length && qs.every(q => (getLocalStatus(q.id) || q.status) === 'done')) burstConfetti();
+    }
+
     if (activeStatusFilter !== 'all' && next !== activeStatusFilter) {
         if (card) {
             card.style.transition = 'opacity .35s, transform .35s';
@@ -87,6 +169,30 @@ async function cycleStatus(questionId, currentStatus, event) {
                 checkEmptyState();
             }, 360);
         }
+    }
+}
+
+function burstConfetti() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const anchor = document.querySelector('.stats-ring') || document.getElementById('topicStats');
+    const rect = anchor ? anchor.getBoundingClientRect() : { left: innerWidth / 2, top: 120, width: 0, height: 0 };
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const colors = ['#5143e8', '#8173ff', '#0e9f78', '#e8890c', '#e04458', '#2fb7f5'];
+    for (let i = 0; i < 44; i++) {
+        const p = document.createElement('i');
+        p.className = 'confetti-piece';
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 90 + Math.random() * 190;
+        p.style.left = cx + 'px';
+        p.style.top = cy + 'px';
+        p.style.background = colors[i % colors.length];
+        p.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+        p.style.setProperty('--dy', Math.sin(angle) * dist - 60 + 'px');
+        p.style.setProperty('--rot', Math.round(Math.random() * 720 - 360) + 'deg');
+        p.style.animationDelay = Math.random() * 120 + 'ms';
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 1800);
     }
 }
 
@@ -116,19 +222,20 @@ function checkEmptyState() {
     }
 }
 
-/* ---------- NEW: topic progress summary (ring + counts + message) ---------- */
+/* ---------- Topic progress summary (animated ring + counts + reads) ---------- */
 function renderTopicStats(topicId) {
     const box = document.getElementById('topicStats');
     if (!box) return;
     const qs = allQuestionsCache[topicId];
-    if (!qs) { box.innerHTML = ''; return; }
+    if (!qs) { box.innerHTML = ''; box.dataset.tid = ''; return; }
 
-    let nNew = 0, nReading = 0, nDone = 0;
+    let nNew = 0, nReading = 0, nDone = 0, nReads = 0;
     qs.forEach(q => {
         const s = getLocalStatus(q.id) || q.status || 'new';
         if (s === 'done') nDone++;
         else if (s === 'reading') nReading++;
         else nNew++;
+        nReads += getReadCount(q.id);
     });
     const total = qs.length;
     const pct = total ? Math.round((nDone / total) * 100) : 0;
@@ -138,27 +245,60 @@ function renderTopicStats(topicId) {
     let msg;
     if (!total)           msg = 'No questions yet. Add the first one.';
     else if (pct === 0)   msg = 'Open a question and mark it Reading to begin.';
-    else if (pct < 50)    msg = `${nDone} down. Keep going.`;
+    else if (pct < 50)    msg = 'Good start. Keep the momentum.';
     else if (pct < 100)   msg = `Past halfway. ${total - nDone} left to finish.`;
     else                  msg = 'Topic complete. Review it once more before the interview.';
 
-    box.innerHTML = `
-        <div class="stats-ring${pct === 100 ? ' complete' : ''}">
-            <svg viewBox="0 0 44 44" aria-hidden="true">
-                <circle class="ring-bg" cx="22" cy="22" r="18"></circle>
-                <circle class="ring-fg" cx="22" cy="22" r="18" stroke-dasharray="${C}" stroke-dashoffset="${offset}"></circle>
-            </svg>
-            <span class="ring-pct">${pct}%</span>
-        </div>
-        <div class="stats-body">
-            <div class="stats-msg">${esc(msg)}</div>
-            <div class="stats-chips">
-                <span class="stat-chip sc-new"><i class="bi bi-circle"></i> ${nNew} new</span>
-                <span class="stat-chip sc-reading"><i class="bi bi-book-half"></i> ${nReading} reading</span>
-                <span class="stat-chip sc-done"><i class="bi bi-check-circle-fill"></i> ${nDone} done</span>
-                <span class="stat-chip sc-total">${total} total</span>
+    if (box.dataset.tid !== String(topicId) || !box.querySelector('.ring-fg')) {
+        box.dataset.tid = String(topicId);
+        box.innerHTML = `
+            <div class="stats-ring">
+                <svg viewBox="0 0 44 44" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" style="stop-color:var(--btn-a)"></stop>
+                            <stop offset="100%" style="stop-color:var(--ring-end)"></stop>
+                        </linearGradient>
+                    </defs>
+                    <circle class="ring-bg" cx="22" cy="22" r="18"></circle>
+                    <circle class="ring-fg" cx="22" cy="22" r="18" stroke="url(#ringGrad)" stroke-dasharray="${C}" style="stroke-dashoffset:${C}"></circle>
+                </svg>
+                <span class="ring-pct"></span>
             </div>
-        </div>`;
+            <div class="stats-body">
+                <div class="stats-head"></div>
+                <div class="stats-msg"></div>
+                <div class="stats-chips">
+                    <span class="stat-chip sc-new"><i class="bi bi-circle"></i> <b data-k="new"></b> new</span>
+                    <span class="stat-chip sc-reading"><i class="bi bi-book-half"></i> <b data-k="reading"></b> reading</span>
+                    <span class="stat-chip sc-done"><i class="bi bi-check-circle-fill"></i> <b data-k="done"></b> done</span>
+                    <span class="stat-chip sc-reads" title="Total times you opened answers in this topic"><i class="bi bi-eye"></i> <b data-k="reads"></b> reads</span>
+                </div>
+            </div>`;
+        box.querySelector('.ring-fg').getBoundingClientRect();
+    }
+
+    const setChip = (k, v) => {
+        const el = box.querySelector(`[data-k="${k}"]`);
+        if (!el) return;
+        if (el.textContent !== String(v)) {
+            el.textContent = v;
+            const chip = el.closest('.stat-chip');
+            chip.classList.remove('bump');
+            void chip.offsetWidth;
+            chip.classList.add('bump');
+        }
+    };
+
+    box.querySelector('.ring-fg').style.strokeDashoffset = offset;
+    box.querySelector('.stats-ring').classList.toggle('complete', pct === 100);
+    box.querySelector('.ring-pct').textContent = pct + '%';
+    box.querySelector('.stats-head').textContent = total ? `${nDone} of ${total} done` : 'Empty topic';
+    box.querySelector('.stats-msg').textContent = msg;
+    setChip('new', nNew);
+    setChip('reading', nReading);
+    setChip('done', nDone);
+    setChip('reads', nReads);
 }
 
 function readTimeLabel(q) {
@@ -250,7 +390,7 @@ function renderTopics() {
         el.className = 'topic-item' + (activeTopic?.id == t.id ? ' active' : '');
         el.dataset.id = t.id;
         el.innerHTML = `
-            <div class="topic-icon" style="background:${t.color}18;color:${t.color}">
+            <div class="topic-icon" style="background:${t.color}22;color:${t.color}">
                 <i class="bi ${t.icon}"></i>
             </div>
             <div class="topic-meta">
@@ -315,7 +455,7 @@ async function loadQuestions(topicId) {
 }
 
 function isRichHtml(str) {
-    return /<(p|ul|ol|li|strong|em|h[123]|blockquote|br)[^>]*>/i.test(str);
+    return /<(p|ul|ol|li|strong|em|h[123]|blockquote|br|pre)[^>]*>/i.test(str);
 }
 
 function splitIntoSentences(text) {
@@ -458,6 +598,11 @@ function renderQuestions(questions, topicId) {
     normalizeAnswerFormatting(scroll);
     enhanceReadableSections(scroll);
 
+    /* entrance animation is one-shot, so later status flashes never replay it */
+    scroll.querySelectorAll('.q-card.q-enter').forEach(c => {
+        c.addEventListener('animationend', () => c.classList.remove('q-enter'), { once: true });
+    });
+
     scroll.addEventListener('scroll', () => {
         if (activeTopic) localStorage.setItem(LS_SCROLL + '_' + activeTopic.id, scroll.scrollTop);
     }, { passive: true });
@@ -512,14 +657,14 @@ function buildCard(q, num, isOpen = false) {
 
     const pointsHtml = q.points?.length
         ? `<div class="q-section">
-            <div class="q-section-label">Key Points</div>
+            <div class="q-section-label"><i class="bi bi-lightbulb"></i> Key Points</div>
             <div class="q-points">${q.points.map(p => `<div class="q-point">${esc(p)}</div>`).join('')}</div>
            </div>`
         : '';
 
     const codeHtml = q.code_example
         ? `<div class="q-section">
-            <div class="q-section-label">Example Code</div>
+            <div class="q-section-label"><i class="bi bi-code-slash"></i> Example Code</div>
             <div class="code-block">
                 <div class="code-header">
                     <span class="code-lang">${esc(langLabel[lang] || lang)}</span>
@@ -531,21 +676,23 @@ function buildCard(q, num, isOpen = false) {
         : '';
 
     const descHtml = q.description
-        ? `<div class="q-section"><div class="q-section-label">Description</div><div class="q-desc">${esc(q.description)}</div></div>`
+        ? `<div class="q-section"><div class="q-section-label"><i class="bi bi-card-text"></i> Description</div><div class="q-desc">${esc(q.description)}</div></div>`
         : '';
 
     const metaBar = `<div class="q-meta">
                 <span><i class="bi bi-clock"></i> ${readTimeLabel(q)}</span>
                 ${q.points?.length ? `<span><i class="bi bi-list-check"></i> ${q.points.length} key point${q.points.length > 1 ? 's' : ''}</span>` : ''}
-                ${q.code_example ? `<span><i class="bi bi-code-slash"></i> ${esc(langLabel[lang] || lang)} example</span>` : ''}
+                ${q.code_example ? `<span><i class="bi bi-braces"></i> ${esc(langLabel[lang] || lang)} example</span>` : ''}
+                <span class="q-reads" data-reads-meta="${q.id}">${readsMetaHtml(q.id)}</span>
             </div>`;
 
     return `
-    <div class="q-card q-diff-${esc(q.difficulty)} status-border-${status}${isOpen ? ' open' : ''}" id="qcard-${q.id}">
+    <div class="q-card q-enter q-diff-${esc(q.difficulty)} status-border-${status}${isOpen ? ' open' : ''}" id="qcard-${q.id}" style="--i:${Math.min(num, 12)}">
         <div class="q-card-head" onclick="toggleCard(${q.id})">
             <div class="q-num">${num}</div>
             <div class="q-text">${esc(q.question)}</div>
             <div class="q-badges">
+                ${readBadgeHtml(q.id)}
                 <button class="status-btn ${meta.cls}" data-qid="${q.id}" data-status="${status}"
                     onclick="cycleStatus(${q.id},'${status}',event)"
                     title="Mark as ${STATUS_CYCLE[status]}">
@@ -557,7 +704,7 @@ function buildCard(q, num, isOpen = false) {
         </div>
         <div class="q-card-body">
             ${metaBar}
-            ${q.answer ? `<div class="q-section"><div class="q-section-label">Answer</div>${answerHtml}</div>` : ''}
+            ${q.answer ? `<div class="q-section"><div class="q-section-label"><i class="bi bi-chat-square-text"></i> Answer</div>${answerHtml}</div>` : ''}
             ${descHtml}
             ${pointsHtml}
             ${codeHtml}
@@ -588,6 +735,7 @@ function toggleCard(id) {
         clicked.classList.add('open');
         clicked.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
         localStorage.setItem(LS_OPEN_CARD, String(id));
+        bumpRead(id);
 
         const scrollEl = document.getElementById('qScroll');
         requestAnimationFrame(() => {
@@ -953,7 +1101,7 @@ document.getElementById('searchInput').addEventListener('input', () => {
     searchDebounce = setTimeout(searchQuestions, 380);
 });
 
-/* NEW: press "/" anywhere (outside inputs/editors) to jump to search */
+/* Press "/" anywhere (outside inputs/editors) to jump to search */
 document.addEventListener('keydown', e => {
     if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target;
@@ -963,4 +1111,7 @@ document.addEventListener('keydown', e => {
     document.getElementById('searchInput').focus();
 });
 
-document.addEventListener('DOMContentLoaded', loadTopics);
+document.addEventListener('DOMContentLoaded', () => {
+    applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light', false);
+    loadTopics();
+});
