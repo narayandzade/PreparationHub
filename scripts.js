@@ -116,8 +116,62 @@ function checkEmptyState() {
     }
 }
 
+/* ---------- NEW: topic progress summary (ring + counts + message) ---------- */
+function renderTopicStats(topicId) {
+    const box = document.getElementById('topicStats');
+    if (!box) return;
+    const qs = allQuestionsCache[topicId];
+    if (!qs) { box.innerHTML = ''; return; }
+
+    let nNew = 0, nReading = 0, nDone = 0;
+    qs.forEach(q => {
+        const s = getLocalStatus(q.id) || q.status || 'new';
+        if (s === 'done') nDone++;
+        else if (s === 'reading') nReading++;
+        else nNew++;
+    });
+    const total = qs.length;
+    const pct = total ? Math.round((nDone / total) * 100) : 0;
+    const C = 113.1;
+    const offset = (C - (C * pct) / 100).toFixed(1);
+
+    let msg;
+    if (!total)           msg = 'No questions yet. Add the first one.';
+    else if (pct === 0)   msg = 'Open a question and mark it Reading to begin.';
+    else if (pct < 50)    msg = `${nDone} down. Keep going.`;
+    else if (pct < 100)   msg = `Past halfway. ${total - nDone} left to finish.`;
+    else                  msg = 'Topic complete. Review it once more before the interview.';
+
+    box.innerHTML = `
+        <div class="stats-ring${pct === 100 ? ' complete' : ''}">
+            <svg viewBox="0 0 44 44" aria-hidden="true">
+                <circle class="ring-bg" cx="22" cy="22" r="18"></circle>
+                <circle class="ring-fg" cx="22" cy="22" r="18" stroke-dasharray="${C}" stroke-dashoffset="${offset}"></circle>
+            </svg>
+            <span class="ring-pct">${pct}%</span>
+        </div>
+        <div class="stats-body">
+            <div class="stats-msg">${esc(msg)}</div>
+            <div class="stats-chips">
+                <span class="stat-chip sc-new"><i class="bi bi-circle"></i> ${nNew} new</span>
+                <span class="stat-chip sc-reading"><i class="bi bi-book-half"></i> ${nReading} reading</span>
+                <span class="stat-chip sc-done"><i class="bi bi-check-circle-fill"></i> ${nDone} done</span>
+                <span class="stat-chip sc-total">${total} total</span>
+            </div>
+        </div>`;
+}
+
+function readTimeLabel(q) {
+    const strip = s => String(s || '').replace(/<[^>]*>/g, ' ');
+    const words = (strip(q.answer) + ' ' + strip(q.description) + ' ' + (Array.isArray(q.points) ? q.points.join(' ') : ''))
+        .split(/\s+/).filter(Boolean).length;
+    const mins = Math.max(1, Math.ceil(words / 180));
+    return `${mins} min read`;
+}
+
 function updateTopicProgress(topicId) {
     if (!topicId || !allQuestionsCache[topicId]) return;
+    if (activeTopic && activeTopic.id == topicId) renderTopicStats(topicId);
     const qs = allQuestionsCache[topicId];
     const total = qs.length;
     if (!total) return;
@@ -242,6 +296,7 @@ function selectTopic(t, skipSave) {
     document.getElementById('filterRow').style.display = 'flex';
     document.getElementById('welcomeScreen').style.display = 'none';
     document.getElementById('qScroll').style.display = 'block';
+    renderTopicStats(t.id);
     saveState();
 }
 
@@ -479,8 +534,14 @@ function buildCard(q, num, isOpen = false) {
         ? `<div class="q-section"><div class="q-section-label">Description</div><div class="q-desc">${esc(q.description)}</div></div>`
         : '';
 
+    const metaBar = `<div class="q-meta">
+                <span><i class="bi bi-clock"></i> ${readTimeLabel(q)}</span>
+                ${q.points?.length ? `<span><i class="bi bi-list-check"></i> ${q.points.length} key point${q.points.length > 1 ? 's' : ''}</span>` : ''}
+                ${q.code_example ? `<span><i class="bi bi-code-slash"></i> ${esc(langLabel[lang] || lang)} example</span>` : ''}
+            </div>`;
+
     return `
-    <div class="q-card status-border-${status}${isOpen ? ' open' : ''}" id="qcard-${q.id}">
+    <div class="q-card q-diff-${esc(q.difficulty)} status-border-${status}${isOpen ? ' open' : ''}" id="qcard-${q.id}">
         <div class="q-card-head" onclick="toggleCard(${q.id})">
             <div class="q-num">${num}</div>
             <div class="q-text">${esc(q.question)}</div>
@@ -495,6 +556,7 @@ function buildCard(q, num, isOpen = false) {
             </div>
         </div>
         <div class="q-card-body">
+            ${metaBar}
             ${q.answer ? `<div class="q-section"><div class="q-section-label">Answer</div>${answerHtml}</div>` : ''}
             ${descHtml}
             ${pointsHtml}
@@ -596,7 +658,7 @@ async function searchQuestions() {
         scroll.innerHTML = `<div class="empty-state"><i class="bi bi-search"></i><p>No results for "<b>${esc(q)}</b>"</p></div>`;
         return;
     }
-    scroll.innerHTML = `<div style="padding:0 0 14px;font-size:.8rem;color:var(--muted);font-weight:600">${r.data.length} result(s) for "<b style="color:var(--text)">${esc(q)}</b>"</div>` +
+    scroll.innerHTML = `<div class="search-count">${r.data.length} result(s) for "<b>${esc(q)}</b>"</div>` +
         r.data.map(item => {
             const status = getLocalStatus(item.id) || item.status || 'new';
             const meta = STATUS_META[status];
@@ -889,6 +951,16 @@ document.getElementById('searchInput').addEventListener('input', () => {
         return;
     }
     searchDebounce = setTimeout(searchQuestions, 380);
+});
+
+/* NEW: press "/" anywhere (outside inputs/editors) to jump to search */
+document.addEventListener('keydown', e => {
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    if (t && t.closest && t.closest('.CodeMirror')) return;
+    e.preventDefault();
+    document.getElementById('searchInput').focus();
 });
 
 document.addEventListener('DOMContentLoaded', loadTopics);

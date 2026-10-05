@@ -4,6 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#4b3fd1">
 <title>Interview Prep Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
@@ -33,13 +34,13 @@
   </div>
   <div class="topbar-search">
     <i class="bi bi-search si"></i>
-    <input id="searchInput" type="text" placeholder="Search questions…" autocomplete="off">
+    <input id="searchInput" type="text" placeholder="Search questions…  ( press / )" autocomplete="off" aria-label="Search questions">
   </div>
   <div class="topbar-actions">
     <button class="btn-add" onclick="openAddQuestion()" id="topAddQBtn" style="display:none" title="Add Question">
       <i class="bi bi-plus-lg"></i><span class="btn-label"> Add Q</span>
     </button>
-    <button class="btn-icon" onclick="openAddTopic()" title="Add Topic">
+    <button class="btn-icon" onclick="openAddTopic()" title="Add Topic" aria-label="Add Topic">
       <i class="bi bi-folder-plus"></i>
     </button>
   </div>
@@ -50,7 +51,7 @@
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <span class="sidebar-title">Topics</span>
-      <button class="btn-icon sm" onclick="openAddTopic()" title="New Topic"><i class="bi bi-plus"></i></button>
+      <button class="btn-icon sm" onclick="openAddTopic()" title="New Topic" aria-label="New Topic"><i class="bi bi-plus"></i></button>
     </div>
     <div class="sidebar-list" id="topicList"></div>
   </div>
@@ -58,14 +59,15 @@
   <div class="main">
     <div id="mainHeader" class="main-header" style="display:none">
       <div class="main-title-row">
-        <button class="back-btn" id="backBtn" onclick="closeSidebar()" title="Topics">
+        <button class="back-btn" id="backBtn" onclick="closeSidebar()" title="Topics" aria-label="Open Topics">
           <i class="bi bi-chevron-left"></i>
         </button>
         <div class="main-title">
-          <span id="mainIcon" style="margin-right:8px"></span>
+          <span id="mainIcon" class="main-icon"></span>
           <span id="mainTitle"></span>
         </div>
       </div>
+      <div class="topic-stats" id="topicStats" aria-live="polite"></div>
     </div>
 
     <div id="filterRow" class="filter-row" style="display:none">
@@ -97,6 +99,14 @@
       <div class="welcome-icon"><i class="bi bi-journal-bookmark"></i></div>
       <h2>Your next interview starts here</h2>
       <p>Tap <strong><i class="bi bi-list"></i> Topics</strong> to open a subject, or add a new one to start building your study catalog.</p>
+      <div class="welcome-tips">
+        <span class="tip"><i class="bi bi-circle"></i> New</span>
+        <i class="bi bi-arrow-right tip-arrow"></i>
+        <span class="tip tip-reading"><i class="bi bi-book-half"></i> Reading</span>
+        <i class="bi bi-arrow-right tip-arrow"></i>
+        <span class="tip tip-done"><i class="bi bi-check-circle-fill"></i> Done</span>
+      </div>
+      <p class="welcome-hint">Tap a status badge on any question to move it forward.</p>
       <button class="btn-add" onclick="toggleSidebar()" style="margin-top:8px">
         <i class="bi bi-layout-sidebar"></i> Browse Topics
       </button>
