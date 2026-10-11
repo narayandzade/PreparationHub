@@ -4,10 +4,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#5143e8" id="metaThemeColor">
+<meta name="theme-color" content="#0d9488" id="metaThemeColor">
 <title>Interview Prep Hub</title>
 <script>
-/* Apply saved theme before first paint (no flash) */
 (function () {
   try {
     var t = localStorage.getItem('prep_theme');
@@ -18,8 +17,7 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Literata:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
@@ -38,18 +36,21 @@
   </button>
   <div class="topbar-brand">
     <div class="brand-icon"><i class="bi bi-mortarboard-fill"></i></div>
-    <div class="brand-text">
-      <span>Interview Prep Hub</span>
-      <span class="brand-eyebrow">Study Catalog</span>
-    </div>
+    <span class="brand-text">Interview Prep Hub</span>
   </div>
   <div class="topbar-search">
     <i class="bi bi-search si"></i>
     <input id="searchInput" type="text" placeholder="Search questions…  ( press / )" autocomplete="off" aria-label="Search questions">
   </div>
+  <div class="study-chip" id="studyChip" title="Your study streak and time studied today">
+    <i class="bi bi-fire"></i><b id="streakNum">0</b><span class="lbl">day streak</span>
+    <span class="sep"></span>
+    <i class="bi bi-clock-history"></i><b id="todayTime">0m</b><span class="lbl">today</span>
+  </div>
   <div class="topbar-actions">
+    <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Switch light / dark theme" aria-label="Switch theme"><i class="bi bi-moon-stars"></i></button>
     <button class="btn-add" onclick="openAddQuestion()" id="topAddQBtn" style="display:none" title="Add Question">
-      <i class="bi bi-plus-lg"></i><span class="btn-label"> Add Q</span>
+      <i class="bi bi-plus-lg"></i><span class="btn-label">Add question</span>
     </button>
     <button class="btn-icon" onclick="openAddTopic()" title="Add Topic" aria-label="Add Topic">
       <i class="bi bi-folder-plus"></i>
@@ -63,7 +64,6 @@
     <div class="sidebar-header">
       <span class="sidebar-title">Topics</span>
       <div class="sidebar-actions">
-        <button class="btn-icon sm" id="themeToggle" onclick="toggleTheme()" title="Switch light / dark theme" aria-label="Switch theme"><i class="bi bi-moon-stars"></i></button>
         <button class="btn-icon sm" onclick="openAddTopic()" title="New Topic" aria-label="New Topic"><i class="bi bi-plus"></i></button>
       </div>
     </div>
@@ -71,48 +71,39 @@
   </div>
 
   <div class="main">
-    <div id="mainHeader" class="main-header" style="display:none">
-      <div class="main-title-row">
-        <button class="back-btn" id="backBtn" onclick="closeSidebar()" title="Topics" aria-label="Open Topics">
-          <i class="bi bi-chevron-left"></i>
-        </button>
-        <div class="main-title">
-          <span id="mainIcon" class="main-icon"></span>
-          <span id="mainTitle"></span>
+    <div id="mainBar" class="main-bar" style="display:none">
+      <div id="mainHeader" class="main-header">
+        <div class="main-title-row">
+          <button class="back-btn" id="backBtn" onclick="toggleSidebar()" title="Topics" aria-label="Open Topics">
+            <i class="bi bi-chevron-left"></i>
+          </button>
+          <div class="main-title">
+            <span id="mainIcon" class="main-icon"></span>
+            <span id="mainTitle"></span>
+          </div>
         </div>
+        <div class="topic-stats" id="topicStats" aria-live="polite"></div>
       </div>
-      <div class="topic-stats" id="topicStats" aria-live="polite"></div>
-    </div>
 
-    <div id="filterRow" class="filter-row" style="display:none">
-      <div class="filter-scroll-inner">
-        <button class="diff-pill active" data-f="all"         onclick="filterQuestions('all',this)">All</button>
-        <button class="diff-pill beg"   data-f="beginner"     onclick="filterQuestions('beginner',this)">Beginner</button>
-        <button class="diff-pill int"   data-f="intermediate" onclick="filterQuestions('intermediate',this)">Intermediate</button>
-        <button class="diff-pill adv"   data-f="advanced"     onclick="filterQuestions('advanced',this)">Advanced</button>
-        <div class="filter-divider"></div>
-        <button class="status-pill sp-new active" data-s="all" onclick="filterByStatus('all',this)">
-          <i class="bi bi-circle"></i> All
-        </button>
-        <button class="status-pill sp-new" data-s="new" onclick="filterByStatus('new',this)">
-          <i class="bi bi-circle"></i> New
-        </button>
-        <button class="status-pill sp-reading" data-s="reading" onclick="filterByStatus('reading',this)">
-          <i class="bi bi-book-half"></i> Reading
-        </button>
-        <button class="status-pill sp-done" data-s="done" onclick="filterByStatus('done',this)">
-          <i class="bi bi-check-circle-fill"></i> Done
-        </button>
-        <button class="btn-add filter-add-btn" id="addQBtn" onclick="openAddQuestion()" style="display:none">
-          <i class="bi bi-plus-lg"></i><span> Add Question</span>
-        </button>
+      <div id="filterRow" class="filter-row">
+        <div class="filter-scroll-inner">
+          <button class="diff-pill active" data-f="all" onclick="filterQuestions('all',this)">All</button>
+          <button class="diff-pill beg" data-f="beginner" onclick="filterQuestions('beginner',this)">Beginner</button>
+          <button class="diff-pill int" data-f="intermediate" onclick="filterQuestions('intermediate',this)">Intermediate</button>
+          <button class="diff-pill adv" data-f="advanced" onclick="filterQuestions('advanced',this)">Advanced</button>
+          <div class="filter-divider"></div>
+          <button class="status-pill active" data-s="all" onclick="filterByStatus('all',this)"><i class="bi bi-circle"></i> All</button>
+          <button class="status-pill" data-s="new" onclick="filterByStatus('new',this)"><i class="bi bi-circle"></i> New</button>
+          <button class="status-pill sp-reading" data-s="reading" onclick="filterByStatus('reading',this)"><i class="bi bi-book-half"></i> Reading</button>
+          <button class="status-pill sp-done" data-s="done" onclick="filterByStatus('done',this)"><i class="bi bi-check-circle-fill"></i> Done</button>
+        </div>
       </div>
     </div>
 
     <div id="welcomeScreen" class="welcome">
       <div class="welcome-icon"><i class="bi bi-journal-bookmark"></i></div>
       <h2>Your next interview starts here</h2>
-      <p>Tap <strong><i class="bi bi-list"></i> Topics</strong> to open a subject, or add a new one to start building your study catalog.</p>
+      <p>Pick a topic, open a question, and let the timer track how long you study. Finish a read to add a set.</p>
       <div class="welcome-tips">
         <span class="tip"><i class="bi bi-circle"></i> New</span>
         <i class="bi bi-arrow-right tip-arrow"></i>
@@ -120,9 +111,9 @@
         <i class="bi bi-arrow-right tip-arrow"></i>
         <span class="tip tip-done"><i class="bi bi-check-circle-fill"></i> Done</span>
       </div>
-      <p class="welcome-hint">Tap a status badge on any question to move it forward. Every time you open an answer, its read count goes up.</p>
-      <button class="btn-add" onclick="toggleSidebar()" style="margin-top:8px">
-        <i class="bi bi-layout-sidebar"></i> Browse Topics
+      <p class="welcome-hint">Three completed sets on a question marks it interview ready.</p>
+      <button class="btn-add" onclick="toggleSidebar()" style="margin-top:6px">
+        <i class="bi bi-layout-sidebar"></i> Browse topics
       </button>
     </div>
 
@@ -132,22 +123,22 @@
 
 <nav class="mobile-bottom-nav" id="mobileBottomNav">
   <div class="mobile-bottom-nav-inner">
-  <button class="mbn-btn" onclick="toggleSidebar()">
-    <i class="bi bi-journals"></i>
-    <span>Topics</span>
-  </button>
-  <button class="mbn-btn" id="mbnSearch" onclick="focusSearch()">
-    <i class="bi bi-search"></i>
-    <span>Search</span>
-  </button>
-  <button class="mbn-btn mbn-add" onclick="openAddQuestion()" id="mbnAddQ" style="display:none">
-    <i class="bi bi-plus-lg"></i>
-    <span>Add Q</span>
-  </button>
-  <button class="mbn-btn" onclick="openAddTopic()">
-    <i class="bi bi-folder-plus"></i>
-    <span>Add Topic</span>
-  </button>
+    <button class="mbn-btn" onclick="toggleSidebar()">
+      <i class="bi bi-journals"></i>
+      <span>Topics</span>
+    </button>
+    <button class="mbn-btn" id="mbnSearch" onclick="focusSearch()">
+      <i class="bi bi-search"></i>
+      <span>Search</span>
+    </button>
+    <button class="mbn-btn mbn-add" onclick="openAddQuestion()" id="mbnAddQ" style="display:none">
+      <i class="bi bi-plus-lg"></i>
+      <span>Add Q</span>
+    </button>
+    <button class="mbn-btn" onclick="openAddTopic()">
+      <i class="bi bi-folder-plus"></i>
+      <span>Add Topic</span>
+    </button>
   </div>
 </nav>
 
@@ -171,7 +162,7 @@
           </div>
           <div class="col-6">
             <label class="form-label">Color</label>
-            <input id="topicColor" class="form-control" type="color" value="#5b5bf5" style="height:42px;padding:4px 8px">
+            <input id="topicColor" class="form-control" type="color" value="#0d9488" style="height:42px;padding:4px 8px">
           </div>
         </div>
         <div class="mt-3">
@@ -215,10 +206,10 @@
           </div>
           <div class="col-12">
             <label class="form-label">Example Code</label>
-            <div id="codeEditorWrapper" style="border:1.5px solid var(--rule);border-radius:10px;overflow:hidden;background:#191c26;"></div>
+            <div id="codeEditorWrapper" style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:#191c26;"></div>
             <textarea id="qCode" style="display:none"></textarea>
           </div>
-           <div class="col-md-4">
+          <div class="col-md-4">
             <label class="form-label">Language</label>
             <select id="qLang" class="form-select" onchange="updateEditorMode()">
               <option value="python">Python</option>
@@ -274,12 +265,10 @@ function toggleSidebar() {
   const b = document.getElementById('sidebarBackdrop');
   const open = s.classList.toggle('open');
   b.classList.toggle('visible', open);
-  document.body.classList.toggle('sidebar-open', open);
 }
 function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarBackdrop').classList.remove('visible');
-  document.body.classList.remove('sidebar-open');
 }
 function focusSearch() {
   const inp = document.getElementById('searchInput');
