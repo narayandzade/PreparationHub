@@ -382,7 +382,6 @@ function renderTopicStats(topicId) {
                 <span class="ring-pct"></span>
             </div>
             <div class="stats-body">
-                <div class="stats-head"></div>
                 <div class="stats-chips">
                     <span class="stat-chip sc-reading"><i class="bi bi-book-half"></i><b data-k="reading"></b> reading</span>
                     <span class="stat-chip"><i class="bi bi-circle"></i><b data-k="new"></b> new</span>
@@ -405,7 +404,6 @@ function renderTopicStats(topicId) {
     box.querySelector('.ring-fg').setAttribute('stroke-dasharray', `${pct} 100`);
     box.querySelector('.stats-ring').classList.toggle('complete', pct === 100);
     box.querySelector('.ring-pct').textContent = pct + '%';
-    box.querySelector('.stats-head').textContent = total ? `${nDone}/${total} done` : 'Empty topic';
     setChip('reading', nReading);
     setChip('new', nNew);
     setChip('sets', nSets);
@@ -462,7 +460,6 @@ function restoreState() {
     if (!savedTopicId) return;
     const t = topics.find(x => x.id == savedTopicId);
     if (!t) return;
-    activeFilter = ls.get(K.filter) || 'all';
     activeStatusFilter = ls.get(K.statusFilter) || 'all';
     syncPills();
     selectTopic(t, true);

@@ -87,11 +87,6 @@
 
       <div id="filterRow" class="filter-row">
         <div class="filter-scroll-inner">
-          <button class="diff-pill active" data-f="all" onclick="filterQuestions('all',this)">All</button>
-          <button class="diff-pill beg" data-f="beginner" onclick="filterQuestions('beginner',this)">Beginner</button>
-          <button class="diff-pill int" data-f="intermediate" onclick="filterQuestions('intermediate',this)">Intermediate</button>
-          <button class="diff-pill adv" data-f="advanced" onclick="filterQuestions('advanced',this)">Advanced</button>
-          <div class="filter-divider"></div>
           <button class="status-pill active" data-s="all" onclick="filterByStatus('all',this)"><i class="bi bi-circle"></i> All</button>
           <button class="status-pill" data-s="new" onclick="filterByStatus('new',this)"><i class="bi bi-circle"></i> New</button>
           <button class="status-pill sp-reading" data-s="reading" onclick="filterByStatus('reading',this)"><i class="bi bi-book-half"></i> Reading</button>
