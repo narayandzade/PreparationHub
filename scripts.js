@@ -14,7 +14,6 @@ const K = {
     filter: 'prep_active_filter',
     statusFilter: 'prep_status_filter',
     scroll: 'prep_scroll_pos',
-    status: 'prep_status_',
     openMap: 'prep_open_map',
     theme: 'prep_theme',
     reads: 'prep_reads_',
@@ -72,9 +71,15 @@ function toggleTheme() {
     applyTheme(cur === 'dark' ? 'light' : 'dark', true);
 }
 
-const getLocalStatus = id => ls.get(K.status + id) || null;
-const statusOf = q => getLocalStatus(q.id) || q.status || 'new';
-const applyLocalStatuses = qs => qs.map(q => { const l = getLocalStatus(q.id); return l ? { ...q, status: l } : q; });
+const statusOf = q => (STATUS_META[q?.status] ? q.status : 'new');
+
+function purgeLegacyLocalStatuses() {
+    try {
+        Object.keys(localStorage)
+            .filter(k => /^prep_status_\d+$/.test(k))
+            .forEach(k => localStorage.removeItem(k));
+    } catch (_) {}
+}
 
 const getReads = id => parseInt(ls.get(K.reads + id)) || 0;
 const getLastRead = id => parseInt(ls.get(K.last + id)) || 0;
@@ -292,22 +297,37 @@ function paintStatusButtons(id, status) {
 }
 
 async function setStatus(id, next) {
-    ls.set(K.status + id, next);
     const q = findQ(id);
+    const prev = q ? statusOf(q) : 'new';
     if (q) q.status = next;
     paintStatusButtons(id, next);
-    try { await req('update_status', 'POST', { id, status: next }); } catch (_) {}
     updateTopicProgress(activeTopic?.id);
+
+    let saved = false;
+    try {
+        const r = await req('update_status', 'POST', { id, status: next });
+        saved = !r || r.success !== false;
+    } catch (_) {}
+
+    if (!saved) {
+        if (q) q.status = prev;
+        paintStatusButtons(id, prev);
+        updateTopicProgress(activeTopic?.id);
+        Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Could not save status', timer: 2000, showConfirmButton: false });
+    }
+    return saved;
 }
 
 async function cycleStatus(id, current, event) {
     event.stopPropagation();
     const next = STATUS_CYCLE[current] || 'new';
+    const x = event.clientX, y = event.clientY;
+    const saving = setStatus(id, next);
+
     document.querySelectorAll(`[data-qid="${id}"]`).forEach(b => {
         b.classList.add('status-animating');
         setTimeout(() => b.classList.remove('status-animating'), 420);
     });
-    await setStatus(id, next);
     const card = document.getElementById('qcard-' + id);
     if (card) {
         card.classList.add('status-flash');
@@ -315,8 +335,10 @@ async function cycleStatus(id, current, event) {
     }
     if (next === 'done') {
         const qs = allQuestionsCache[activeTopic?.id] || [];
-        if (qs.length && qs.every(q => statusOf(q) === 'done')) burstConfetti(event.clientX, event.clientY);
+        if (qs.length && qs.every(q => statusOf(q) === 'done')) burstConfetti(x, y);
     }
+
+    if (!(await saving)) return;
     if (activeStatusFilter !== 'all' && next !== activeStatusFilter && card) {
         card.style.transition = 'opacity .35s, transform .35s';
         card.style.opacity = '0';
@@ -420,7 +442,7 @@ async function preloadTopicProgress(topicId) {
     if (allQuestionsCache[topicId]) return;
     try {
         const r = await req('get_questions', 'GET', null, { topic_id: topicId });
-        if (r.success) allQuestionsCache[topicId] = applyLocalStatuses(r.data);
+        if (r.success) allQuestionsCache[topicId] = r.data;
     } catch (_) {}
 }
 
@@ -510,7 +532,7 @@ async function loadQuestions(topicId) {
         scroll.innerHTML = '<div class="empty-state"><i class="bi bi-exclamation-circle"></i><p>Failed to load questions. Check your connection and try again.</p></div>';
         return;
     }
-    allQuestionsCache[topicId] = applyLocalStatuses(r.data);
+    allQuestionsCache[topicId] = r.data;
     renderQuestions(allQuestionsCache[topicId], topicId);
     updateTopicProgress(topicId);
     renderTopics();
@@ -644,7 +666,7 @@ function buildCard(q, num, isOpen) {
     const lang = q.language || 'python';
     const hlLang = lang === 'text' ? 'plaintext' : lang;
     const status = statusOf(q);
-    const meta = STATUS_META[status] || STATUS_META.new;
+    const meta = STATUS_META[status];
     const diff = esc(q.difficulty);
 
     let answerHtml = '';
@@ -795,8 +817,7 @@ async function searchQuestions() {
     }
     scroll.innerHTML = `<div class="search-count">${r.data.length} result(s) for "<b>${esc(q)}</b>"</div>` +
         r.data.map(item => {
-            const status = getLocalStatus(item.id) || item.status || 'new';
-            const meta = STATUS_META[status];
+            const meta = STATUS_META[statusOf(item)];
             return `<div class="search-result-card" onclick="jumpToTopic(${item.topic_id},${item.id})">
                 <div class="search-result-topic">${esc(item.topic_name)}</div>
                 <div class="search-result-q">${esc(item.question)}</div>
@@ -1079,6 +1100,7 @@ document.getElementById('qScroll').addEventListener('scroll', e => {
 window.addEventListener('resize', setPanelH);
 
 document.addEventListener('DOMContentLoaded', () => {
+    purgeLegacyLocalStatuses();
     applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light', false);
     setPanelH();
     paintStudy();
