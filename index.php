@@ -189,7 +189,7 @@
             <textarea id="qQuestion" class="form-control" rows="1" placeholder="Enter the interview question…" required></textarea>
           </div>
           <div class="col-12">
-            <label class="form-label">Answer</label>
+            <label class="form-label">Answer <span class="label-hint">(code blocks are syntax highlighted using the Language selected below)</span></label>
             <div id="quillAnswerWrapper">
               <div id="quillAnswerEditor"></div>
             </div>

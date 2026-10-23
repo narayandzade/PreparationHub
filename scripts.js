@@ -36,6 +36,7 @@ const STATUS_META = {
     done: { label: 'Done', icon: 'bi-check-circle-fill', cls: 'status-done' },
 };
 const LANG_LABEL = { python: 'Python', javascript: 'JavaScript', php: 'PHP', sql: 'SQL', bash: 'Bash', java: 'Java', text: 'Text' };
+const HL_SUBSET = ['python', 'javascript', 'php', 'sql', 'bash', 'java', 'xml', 'css', 'json'];
 
 async function req(action, method = 'GET', body = null, params = {}) {
     const url = new URL(API, location.href);
@@ -51,6 +52,58 @@ function esc(str) {
     if (!str) return '';
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+/* ---------- Code highlighting helpers (used by editor + display) ---------- */
+
+function highlightCode(text, lang) {
+    if (!window.hljs) return esc(text);
+    try {
+        if (lang && lang !== 'text' && hljs.getLanguage(lang)) {
+            return hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+        }
+        const subset = HL_SUBSET.filter(l => hljs.getLanguage(l));
+        return hljs.highlightAuto(text, subset).value;
+    } catch (_) {
+        return esc(text);
+    }
+}
+
+function highlightAnswerCode(root) {
+    root.querySelectorAll('.q-answer.rich-answer').forEach(ans => {
+        const lang = ans.dataset.lang || '';
+        ans.querySelectorAll('pre').forEach(pre => {
+            if (pre.dataset.hl) return;
+            const text = (pre.textContent || '').replace(/\n+$/, '');
+            if (!text.trim()) return;
+            pre.innerHTML = highlightCode(text, lang);
+            pre.dataset.hl = '1';
+        });
+    });
+}
+
+function cleanAnswerHtml(html) {
+    if (!html) return '';
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    d.querySelectorAll('pre').forEach(pre => {
+        const text = (pre.textContent || '').replace(/\n+$/, '');
+        pre.textContent = text;
+        pre.className = 'ql-syntax';
+        pre.setAttribute('spellcheck', 'false');
+        pre.removeAttribute('data-hl');
+    });
+    return d.innerHTML;
+}
+
+function refreshQuillHighlight() {
+    if (!quillAnswer) return;
+    try {
+        const syntax = quillAnswer.getModule('syntax');
+        if (syntax && typeof syntax.highlight === 'function') syntax.highlight(null, true);
+    } catch (_) {}
+}
+
+/* ---------- Theme ---------- */
 
 function applyTheme(theme, animate) {
     const root = document.documentElement;
@@ -639,6 +692,7 @@ function renderQuestions(questions, topicId) {
     scroll.innerHTML = filtered.map((q, i) => buildCard(q, i + 1, String(q.id) === openId)).join('');
     scroll.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
     scroll.querySelectorAll('.q-answer.rich-answer').forEach(normalizeRichAnswer);
+    highlightAnswerCode(scroll);
     enhanceReadableSections(scroll);
     scroll.querySelectorAll('.q-card.q-enter').forEach(c => c.addEventListener('animationend', () => c.classList.remove('q-enter'), { once: true }));
 
@@ -669,7 +723,7 @@ function buildCard(q, num, isOpen) {
     let answerHtml = '';
     if (q.answer) {
         if (isRichHtml(q.answer)) {
-            answerHtml = `<div class="q-answer rich-answer">${q.answer}</div>`;
+            answerHtml = `<div class="q-answer rich-answer" data-lang="${esc(lang)}">${q.answer}</div>`;
         } else {
             const rendered = q.answer.split(/\n\n+/).filter(p => p.trim()).map(para => {
                 const t = para.trim();
@@ -919,6 +973,10 @@ function initQuillEditor() {
         theme: 'snow',
         placeholder: 'Write a clear, concise answer…',
         modules: {
+            syntax: {
+                // Highlight code blocks using the Language dropdown (auto-detect for Plain Text)
+                highlight: text => highlightCode(text, document.getElementById('qLang').value)
+            },
             toolbar: [
                 [{ header: [1, 2, 3, false] }],
                 ['bold', 'italic', 'underline', 'strike'],
@@ -935,12 +993,14 @@ function setQuillContent(html) {
     if (!quillAnswer) return;
     if (html && html.trim()) quillAnswer.root.innerHTML = html;
     else quillAnswer.setContents([]);
+    setTimeout(refreshQuillHighlight, 0);
 }
 
 function getQuillContent() {
     if (!quillAnswer) return '';
     const html = quillAnswer.root.innerHTML;
-    return html === '<p><br></p>' || !html.trim() ? '' : html;
+    if (html === '<p><br></p>' || !html.trim()) return '';
+    return cleanAnswerHtml(html);
 }
 
 function initCodeEditor() {
@@ -960,9 +1020,11 @@ function initCodeEditor() {
 }
 
 function updateEditorMode() {
-    if (!codeEditor) return;
-    const modeMap = { python: 'python', javascript: 'javascript', php: 'php', sql: 'sql', bash: 'shell', java: 'text/x-java', text: null };
-    codeEditor.setOption('mode', modeMap[document.getElementById('qLang').value] || null);
+    if (codeEditor) {
+        const modeMap = { python: 'python', javascript: 'javascript', php: 'php', sql: 'sql', bash: 'shell', java: 'text/x-java', text: null };
+        codeEditor.setOption('mode', modeMap[document.getElementById('qLang').value] || null);
+    }
+    refreshQuillHighlight();
 }
 
 function openAddQuestion() {

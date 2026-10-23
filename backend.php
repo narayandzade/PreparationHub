@@ -1,18 +1,48 @@
 <?php
 require_once 'database.php';
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+header('Content-Type: application/json; charset=utf-8');
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
-$body   = json_decode(file_get_contents('php://input'), true) ?? [];
+$body   = json_decode(file_get_contents('php://input'), true);
+if (!is_array($body)) $body = [];
 
-function res($data, $code = 200) { http_response_code($code); echo json_encode($data); exit; }
+const ALLOWED_DIFFICULTY = ['beginner', 'intermediate', 'advanced'];
+const ALLOWED_LANGUAGE   = ['python', 'javascript', 'php', 'sql', 'bash', 'java', 'text'];
+const ALLOWED_STATUS     = ['new', 'reading', 'done'];
+
+function res($data, $code = 200) {
+    http_response_code($code);
+    echo json_encode($data, JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
+}
 function err($msg, $code = 400) { res(['success' => false, 'message' => $msg], $code); }
+
+function decode_points($raw) {
+    $p = $raw ? json_decode($raw, true) : [];
+    return is_array($p) ? $p : [];
+}
+function clean_icon($v) {
+    $v = trim((string)$v);
+    return preg_match('/^bi-[a-z0-9-]+$/', $v) ? $v : 'bi-folder';
+}
+function clean_color($v) {
+    $v = trim((string)$v);
+    return preg_match('/^#[0-9a-fA-F]{6}$/', $v) ? $v : '#0d9488';
+}
+function make_slug(PDO $pdo, $name) {
+    $base = trim(strtolower(preg_replace('/[^a-z0-9]+/i', '-', $name)), '-');
+    if ($base === '') $base = 'topic';
+    $slug = $base;
+    $i = 1;
+    $st = $pdo->prepare('SELECT id FROM topics WHERE slug=?');
+    while (true) {
+        $st->execute([$slug]);
+        if (!$st->fetch()) break;
+        $slug = $base . '-' . $i++;
+    }
+    return $slug;
+}
 
 try {
     if ($action === 'get_topics' && $method === 'GET') {
@@ -25,23 +55,31 @@ try {
     }
 
     if ($action === 'save_topic' && $method === 'POST') {
-        if (empty($body['name'])) err('Name required');
-        $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '-', $body['name']));
-        $base = $slug; $i = 1;
-        while ($pdo->query("SELECT id FROM topics WHERE slug='$slug'")->fetch()) $slug = $base.'-'.$i++;
+        $name = trim((string)($body['name'] ?? ''));
+        if ($name === '') err('Name required');
+        $icon  = clean_icon($body['icon'] ?? 'bi-folder');
+        $color = clean_color($body['color'] ?? '#0d9488');
+        $order = (int)($body['sort_order'] ?? 0);
+
         if (!empty($body['id'])) {
             $st = $pdo->prepare('UPDATE topics SET name=?,icon=?,color=?,sort_order=? WHERE id=?');
-            $st->execute([$body['name'], $body['icon'] ?? 'bi-folder', $body['color'] ?? '#6c63ff', (int)($body['sort_order'] ?? 0), $body['id']]);
+            $st->execute([$name, $icon, $color, $order, (int)$body['id']]);
             res(['success' => true, 'message' => 'Topic updated!']);
         }
+
+        $slug = make_slug($pdo, $name);
         $st = $pdo->prepare('INSERT INTO topics (name,slug,icon,color,sort_order) VALUES (?,?,?,?,?)');
-        $st->execute([$body['name'], $slug, $body['icon'] ?? 'bi-folder', $body['color'] ?? '#6c63ff', (int)($body['sort_order'] ?? 0)]);
+        $st->execute([$name, $slug, $icon, $color, $order]);
         res(['success' => true, 'id' => $pdo->lastInsertId(), 'message' => 'Topic added!']);
     }
 
     if ($action === 'delete_topic' && $method === 'POST') {
-        if (empty($body['id'])) err('ID required');
-        $pdo->prepare('DELETE FROM topics WHERE id=?')->execute([$body['id']]);
+        $id = (int)($body['id'] ?? 0);
+        if (!$id) err('ID required');
+        $pdo->beginTransaction();
+        $pdo->prepare('DELETE FROM questions WHERE topic_id=?')->execute([$id]);
+        $pdo->prepare('DELETE FROM topics WHERE id=?')->execute([$id]);
+        $pdo->commit();
         res(['success' => true, 'message' => 'Topic deleted!']);
     }
 
@@ -51,7 +89,8 @@ try {
         $st = $pdo->prepare('SELECT * FROM questions WHERE topic_id=? ORDER BY sort_order, id');
         $st->execute([$tid]);
         $rows = $st->fetchAll();
-        foreach ($rows as &$r) $r['points'] = $r['points'] ? json_decode($r['points'], true) : [];
+        foreach ($rows as &$r) $r['points'] = decode_points($r['points']);
+        unset($r);
         res(['success' => true, 'data' => $rows]);
     }
 
@@ -62,52 +101,79 @@ try {
         $st->execute([$id]);
         $row = $st->fetch();
         if (!$row) err('Not found', 404);
-        $row['points'] = $row['points'] ? json_decode($row['points'], true) : [];
+        $row['points'] = decode_points($row['points']);
         res(['success' => true, 'data' => $row]);
     }
 
     if ($action === 'save_question' && $method === 'POST') {
-        if (empty($body['topic_id']) || empty($body['question']) || empty($body['answer'])) err('topic_id, question and answer required');
+        $topicId  = (int)($body['topic_id'] ?? 0);
+        $question = trim((string)($body['question'] ?? ''));
+        $answer   = (string)($body['answer'] ?? '');
+        if (!$topicId || $question === '' || trim($answer) === '') err('topic_id, question and answer required');
+
+        $chk = $pdo->prepare('SELECT id FROM topics WHERE id=?');
+        $chk->execute([$topicId]);
+        if (!$chk->fetch()) err('Topic not found', 404);
+
+        $difficulty = in_array($body['difficulty'] ?? '', ALLOWED_DIFFICULTY, true) ? $body['difficulty'] : 'intermediate';
+        $language   = in_array($body['language'] ?? '', ALLOWED_LANGUAGE, true) ? $body['language'] : 'python';
+        $order      = (int)($body['sort_order'] ?? 0);
+        $code       = (string)($body['code_example'] ?? '');
+        // null = "not sent", so an existing description is kept on update
+        $desc       = array_key_exists('description', $body) ? (string)$body['description'] : null;
+
         $pts = is_array($body['points'] ?? null)
-            ? json_encode($body['points'])
-            : json_encode(array_values(array_filter(array_map('trim', explode("\n", $body['points'] ?? '')))));
+            ? json_encode(array_values($body['points']))
+            : json_encode(array_values(array_filter(array_map('trim', explode("\n", (string)($body['points'] ?? ''))), 'strlen')));
+
         if (!empty($body['id'])) {
-            $st = $pdo->prepare('UPDATE questions SET topic_id=?,question=?,answer=?,description=?,difficulty=?,points=?,code_example=?,language=?,sort_order=? WHERE id=?');
-            $st->execute([$body['topic_id'],$body['question'],$body['answer'],$body['description']??'',$body['difficulty']??'intermediate',$pts,$body['code_example']??'',$body['language']??'python',(int)($body['sort_order']??0),$body['id']]);
+            $st = $pdo->prepare('UPDATE questions SET topic_id=?,question=?,answer=?,description=COALESCE(?,description),difficulty=?,points=?,code_example=?,language=?,sort_order=? WHERE id=?');
+            $st->execute([$topicId, $question, $answer, $desc, $difficulty, $pts, $code, $language, $order, (int)$body['id']]);
             res(['success' => true, 'message' => 'Question updated!']);
         }
+
         $st = $pdo->prepare('INSERT INTO questions (topic_id,question,answer,description,difficulty,points,code_example,language,sort_order) VALUES (?,?,?,?,?,?,?,?,?)');
-        $st->execute([$body['topic_id'],$body['question'],$body['answer'],$body['description']??'',$body['difficulty']??'intermediate',$pts,$body['code_example']??'',$body['language']??'python',(int)($body['sort_order']??0)]);
+        $st->execute([$topicId, $question, $answer, $desc ?? '', $difficulty, $pts, $code, $language, $order]);
         res(['success' => true, 'id' => $pdo->lastInsertId(), 'message' => 'Question added!']);
     }
 
     if ($action === 'delete_question' && $method === 'POST') {
-        if (empty($body['id'])) err('ID required');
-        $pdo->prepare('DELETE FROM questions WHERE id=?')->execute([$body['id']]);
+        $id = (int)($body['id'] ?? 0);
+        if (!$id) err('ID required');
+        $pdo->prepare('DELETE FROM questions WHERE id=?')->execute([$id]);
         res(['success' => true, 'message' => 'Question deleted!']);
     }
 
     if ($action === 'update_status' && $method === 'POST') {
-        if (empty($body['id']) || empty($body['status'])) err('id and status required');
-        $allowed = ['new', 'reading', 'done'];
-        if (!in_array($body['status'], $allowed)) err('Invalid status');
+        $id = (int)($body['id'] ?? 0);
+        $status = $body['status'] ?? '';
+        if (!$id || $status === '') err('id and status required');
+        if (!in_array($status, ALLOWED_STATUS, true)) err('Invalid status');
         $st = $pdo->prepare('UPDATE questions SET status=? WHERE id=?');
-        $st->execute([$body['status'], $body['id']]);
-        res(['success' => true, 'status' => $body['status']]);
+        $st->execute([$status, $id]);
+        res(['success' => true, 'status' => $status]);
     }
 
     if ($action === 'search' && $method === 'GET') {
-        $q = $_GET['q'] ?? '';
-        if (strlen($q) < 2) err('Query too short');
-        $like = '%'.$q.'%';
-        $st = $pdo->prepare('SELECT q.*,t.name AS topic_name FROM questions q JOIN topics t ON t.id=q.topic_id WHERE q.question LIKE ? OR q.answer LIKE ? OR q.description LIKE ? ORDER BY q.id LIMIT 60');
-        $st->execute([$like,$like,$like]);
+        $q = trim((string)($_GET['q'] ?? ''));
+        if (mb_strlen($q) < 2) err('Query too short');
+        $like = '%' . addcslashes($q, '\\%_') . '%';
+        $st = $pdo->prepare(
+            'SELECT q.*, t.name AS topic_name FROM questions q
+             JOIN topics t ON t.id = q.topic_id
+             WHERE q.question LIKE ? OR q.answer LIKE ? OR q.description LIKE ?
+             ORDER BY q.id LIMIT 60'
+        );
+        $st->execute([$like, $like, $like]);
         $rows = $st->fetchAll();
-        foreach ($rows as &$r) $r['points'] = $r['points'] ? json_decode($r['points'], true) : [];
+        foreach ($rows as &$r) $r['points'] = decode_points($r['points']);
+        unset($r);
         res(['success' => true, 'data' => $rows]);
     }
 
     err('Unknown action', 404);
 } catch (Throwable $e) {
-    err('Server error: '.$e->getMessage(), 500);
+    if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
+    error_log('[prep-hub] ' . $e->getMessage());
+    err('Server error. Please try again.', 500);
 }

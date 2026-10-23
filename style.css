@@ -288,6 +288,7 @@ html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transit
 .q-answer.rich-answer a { color: var(--a); text-underline-offset: 3px; }
 .q-answer.rich-answer code { font-family: var(--f-mono); font-size: .84em; padding: 1px 6px; border-radius: 6px; background: var(--surface2); border: 1px solid var(--line); color: var(--a); }
 .q-answer.rich-answer pre, .q-answer.rich-answer pre.ql-syntax { background: var(--code-bg); color: #d6ece8; font-family: var(--f-mono); font-size: .82rem; line-height: 1.7; padding: 14px 16px; border-radius: 10px; overflow-x: auto; margin: .8em 0; white-space: pre; }
+.q-answer.rich-answer pre .hljs-keyword, .q-answer.rich-answer pre .hljs-built_in { font-style: normal; }
 .q-answer-para { font-size: .98rem; line-height: 1.82; margin: 0 0 10px; }
 .q-answer-para:last-child { margin-bottom: 0; }
 .q-answer-code { background: var(--code-bg); padding: 12px 14px; border-radius: 10px; font-family: var(--f-mono); font-size: .8rem; line-height: 1.7; color: #d6ece8; overflow-x: auto; margin: 8px 0; }
@@ -383,6 +384,8 @@ textarea.form-control { resize: vertical; min-height: 44px; }
 #quillAnswerWrapper .ql-container { border: none; font-family: var(--f-body); }
 #quillAnswerWrapper .ql-editor { min-height: 200px; max-height: 340px; overflow-y: auto; font-size: .93rem; line-height: 1.78; color: var(--ink); padding: 12px 14px; }
 #quillAnswerWrapper .ql-editor.ql-blank::before { color: var(--muted); font-style: normal; }
+#quillAnswerWrapper .ql-editor pre.ql-syntax { background: var(--code-bg); color: #d6ece8; font-family: var(--f-mono); font-size: .82rem; line-height: 1.7; padding: 12px 14px; border-radius: 10px; overflow-x: auto; white-space: pre; margin: .6em 0; }
+#quillAnswerWrapper .ql-editor pre.ql-syntax .ql-token { font-family: var(--f-mono); }
 
 .mobile-bottom-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--bar-bg); backdrop-filter: blur(14px); border-top: 1px solid var(--line); z-index: 150; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .mobile-bottom-nav-inner { display: flex; align-items: stretch; height: 58px; }
