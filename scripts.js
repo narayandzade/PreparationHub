@@ -1,981 +1,1275 @@
-const API = 'backend.php';
-let topics = [];
-let activeTopic = null;
-let activeFilter = 'all';
-let activeStatusFilter = 'all';
-let editingQuestion = null;
-let editingTopic = null;
-let codeEditor = null;
-let quillAnswer = null;
-let allQuestionsCache = {};
+const API_ENDPOINT = 'backend.php';
+const READY_SET_TARGET = 3;
 
-const K = {
-    topic: 'prep_active_topic',
-    filter: 'prep_active_filter',
+const STORAGE_KEYS = {
+    activeTopic: 'prep_active_topic',
+    difficultyFilter: 'prep_active_filter',
     statusFilter: 'prep_status_filter',
-    scroll: 'prep_scroll_pos',
-    openMap: 'prep_open_map',
+    listScroll: 'prep_scroll_pos_',
+    openQuestions: 'prep_open_map',
     theme: 'prep_theme',
+    practiceMode: 'prep_practice_mode',
     reads: 'prep_reads_',
-    last: 'prep_lastread_',
+    lastRead: 'prep_lastread_',
     sets: 'prep_sets_',
     time: 'prep_time_',
     day: 'prep_day_',
 };
 
-const ls = {
-    get: k => { try { return localStorage.getItem(k); } catch (_) { return null; } },
-    set: (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} },
-    del: k => { try { localStorage.removeItem(k); } catch (_) {} },
-};
+const STATUS_NEXT = { new: 'reading', reading: 'done', done: 'new' };
 
-const STATUS_CYCLE = { new: 'reading', reading: 'done', done: 'new' };
 const STATUS_META = {
-    new: { label: 'New', icon: 'bi-circle', cls: 'status-new' },
-    reading: { label: 'Reading', icon: 'bi-book-half', cls: 'status-reading' },
-    done: { label: 'Done', icon: 'bi-check-circle-fill', cls: 'status-done' },
+    new: { label: 'New', icon: 'bi-circle' },
+    reading: { label: 'Reading', icon: 'bi-book-half' },
+    done: { label: 'Done', icon: 'bi-check-circle-fill' },
 };
-const LANG_LABEL = { python: 'Python', javascript: 'JavaScript', php: 'PHP', sql: 'SQL', bash: 'Bash', java: 'Java', text: 'Text' };
-const HL_SUBSET = ['python', 'javascript', 'php', 'sql', 'bash', 'java', 'xml', 'css', 'json'];
 
-async function req(action, method = 'GET', body = null, params = {}) {
-    const url = new URL(API, location.href);
+const LANGUAGE_LABELS = {
+    python: 'Python',
+    javascript: 'JavaScript',
+    php: 'PHP',
+    sql: 'SQL',
+    bash: 'Bash',
+    java: 'Java',
+    text: 'Text',
+};
+
+const EDITOR_MODES = {
+    python: 'python',
+    javascript: 'javascript',
+    php: 'php',
+    sql: 'sql',
+    bash: 'shell',
+    java: 'text/x-java',
+    text: null,
+};
+
+const HIGHLIGHT_LANGUAGES = ['python', 'javascript', 'php', 'sql', 'bash', 'java', 'xml', 'css', 'json'];
+const CONFETTI_COLORS = ['#e92a7c', '#c9f23a', '#0fb5d9', '#ffd21f', '#6a4cff', '#14b284'];
+
+const state = {
+    topics: [],
+    activeTopic: null,
+    selectedQuestionId: null,
+    statusFilter: 'all',
+    difficultyFilter: 'all',
+    questionCache: {},
+    isSearching: false,
+    practiceMode: false,
+};
+
+const studyTimer = {
+    questionId: null,
+    intervalId: null,
+    sessionSeconds: 0,
+    tickCount: 0,
+    estimateSeconds: 60,
+};
+
+let codeEditor = null;
+let answerEditor = null;
+let searchTimeout = null;
+
+const $ = id => document.getElementById(id);
+
+const storage = {
+    get: key => {
+        try { return localStorage.getItem(key); } catch (_) { return null; }
+    },
+    set: (key, value) => {
+        try { localStorage.setItem(key, value); } catch (_) {}
+    },
+    remove: key => {
+        try { localStorage.removeItem(key); } catch (_) {}
+    },
+};
+
+async function apiRequest(action, method = 'GET', body = null, params = {}) {
+    const url = new URL(API_ENDPOINT, location.href);
     url.searchParams.set('action', action);
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-    const opts = { method, headers: { 'Content-Type': 'application/json' } };
-    if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(url, opts);
-    return res.json();
-}
-
-function esc(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-/* ---------- Code highlighting helpers (used by editor + display) ---------- */
-
-function highlightCode(text, lang) {
-    if (!window.hljs) return esc(text);
+    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+    const options = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) options.body = JSON.stringify(body);
     try {
-        if (lang && lang !== 'text' && hljs.getLanguage(lang)) {
-            return hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+        const response = await fetch(url, options);
+        return await response.json();
+    } catch (_) {
+        return { success: false, message: 'Network error. Check your connection and try again.' };
+    }
+}
+
+function escapeHtml(value) {
+    if (!value) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function setText(id, value) {
+    const element = $(id);
+    if (element && element.textContent !== String(value)) element.textContent = value;
+}
+
+function showToast(icon, title) {
+    Swal.fire({ toast: true, position: 'top-end', icon, title, timer: icon === 'error' ? 2200 : 1800, showConfirmButton: false });
+}
+
+function isSplitView() {
+    return window.matchMedia('(min-width: 900px)').matches;
+}
+
+function highlightCode(text, language) {
+    if (!window.hljs) return escapeHtml(text);
+    try {
+        if (language && language !== 'text' && hljs.getLanguage(language)) {
+            return hljs.highlight(text, { language, ignoreIllegals: true }).value;
         }
-        const subset = HL_SUBSET.filter(l => hljs.getLanguage(l));
+        const subset = HIGHLIGHT_LANGUAGES.filter(name => hljs.getLanguage(name));
         return hljs.highlightAuto(text, subset).value;
     } catch (_) {
-        return esc(text);
+        return escapeHtml(text);
     }
 }
 
 function highlightAnswerCode(root) {
-    root.querySelectorAll('.q-answer.rich-answer').forEach(ans => {
-        const lang = ans.dataset.lang || '';
-        ans.querySelectorAll('pre').forEach(pre => {
-            if (pre.dataset.hl) return;
-            const text = (pre.textContent || '').replace(/\n+$/, '');
+    root.querySelectorAll('.answer-content.is-rich').forEach(answer => {
+        const language = answer.dataset.language || '';
+        answer.querySelectorAll('pre').forEach(block => {
+            if (block.dataset.highlighted) return;
+            const text = (block.textContent || '').replace(/\n+$/, '');
             if (!text.trim()) return;
-            pre.innerHTML = highlightCode(text, lang);
-            pre.dataset.hl = '1';
+            block.innerHTML = highlightCode(text, language);
+            block.dataset.highlighted = '1';
         });
     });
 }
 
 function cleanAnswerHtml(html) {
     if (!html) return '';
-    const d = document.createElement('div');
-    d.innerHTML = html;
-    d.querySelectorAll('pre').forEach(pre => {
-        const text = (pre.textContent || '').replace(/\n+$/, '');
-        pre.textContent = text;
-        pre.className = 'ql-syntax';
-        pre.setAttribute('spellcheck', 'false');
-        pre.removeAttribute('data-hl');
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    container.querySelectorAll('pre').forEach(block => {
+        block.textContent = (block.textContent || '').replace(/\n+$/, '');
+        block.className = 'ql-syntax';
+        block.setAttribute('spellcheck', 'false');
+        block.removeAttribute('data-highlighted');
     });
-    return d.innerHTML;
+    return container.innerHTML;
 }
 
-function refreshQuillHighlight() {
-    if (!quillAnswer) return;
+function refreshAnswerEditorHighlight() {
+    if (!answerEditor) return;
     try {
-        const syntax = quillAnswer.getModule('syntax');
+        const syntax = answerEditor.getModule('syntax');
         if (syntax && typeof syntax.highlight === 'function') syntax.highlight(null, true);
     } catch (_) {}
 }
 
-/* ---------- Theme ---------- */
-
 function applyTheme(theme, animate) {
     const root = document.documentElement;
     if (animate) {
-        root.classList.add('theme-anim');
-        setTimeout(() => root.classList.remove('theme-anim'), 450);
+        root.classList.add('is-theme-changing');
+        setTimeout(() => root.classList.remove('is-theme-changing'), 450);
     }
     root.setAttribute('data-theme', theme);
-    ls.set(K.theme, theme);
-    const btn = document.getElementById('themeToggle');
-    if (btn) btn.innerHTML = theme === 'dark' ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
-    const meta = document.getElementById('metaThemeColor');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#061416' : '#0d9488');
+    storage.set(STORAGE_KEYS.theme, theme);
+    const toggle = $('themeToggle');
+    if (toggle) toggle.innerHTML = theme === 'dark' ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
+    const meta = $('themeColorMeta');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#171236' : '#ffffff');
 }
 
 function toggleTheme() {
-    const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-    applyTheme(cur === 'dark' ? 'light' : 'dark', true);
+    const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    applyTheme(current === 'dark' ? 'light' : 'dark', true);
 }
 
-const statusOf = q => (STATUS_META[q?.status] ? q.status : 'new');
+const statusOf = question => (STATUS_META[question?.status] ? question.status : 'new');
 
 function purgeLegacyLocalStatuses() {
     try {
         Object.keys(localStorage)
-            .filter(k => /^prep_status_\d+$/.test(k))
-            .forEach(k => localStorage.removeItem(k));
+            .filter(key => /^prep_status_\d+$/.test(key))
+            .forEach(key => localStorage.removeItem(key));
     } catch (_) {}
 }
 
-const getReads = id => parseInt(ls.get(K.reads + id)) || 0;
-const getLastRead = id => parseInt(ls.get(K.last + id)) || 0;
-const getSets = id => parseInt(ls.get(K.sets + id)) || 0;
-const getTime = id => parseInt(ls.get(K.time + id)) || 0;
+const getReads = id => parseInt(storage.get(STORAGE_KEYS.reads + id)) || 0;
+const getLastRead = id => parseInt(storage.get(STORAGE_KEYS.lastRead + id)) || 0;
+const getSets = id => parseInt(storage.get(STORAGE_KEYS.sets + id)) || 0;
+const getTime = id => parseInt(storage.get(STORAGE_KEYS.time + id)) || 0;
 
-function fmtClock(s) {
-    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-    const mm = h ? String(m).padStart(2, '0') : String(m);
-    return (h ? h + ':' : '') + mm + ':' + String(sec).padStart(2, '0');
+function formatClock(totalSeconds) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const minuteText = hours ? String(minutes).padStart(2, '0') : String(minutes);
+    return (hours ? hours + ':' : '') + minuteText + ':' + String(seconds).padStart(2, '0');
 }
 
-function fmtShort(s) {
-    if (s < 60) return s + 's';
-    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-    return h ? `${h}h ${m}m` : `${m}m`;
+function formatShort(totalSeconds) {
+    if (totalSeconds < 60) return totalSeconds + 's';
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
-function relTime(ts) {
-    if (!ts) return 'never';
-    const startOf = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
-    const days = Math.round((startOf(Date.now()) - startOf(ts)) / 86400000);
+function formatRelativeDay(timestamp) {
+    if (!timestamp) return 'never';
+    const startOfDay = value => {
+        const date = new Date(value);
+        date.setHours(0, 0, 0, 0);
+        return date.getTime();
+    };
+    const days = Math.round((startOfDay(Date.now()) - startOfDay(timestamp)) / 86400000);
     if (days <= 0) return 'today';
     if (days === 1) return 'yesterday';
     return days + ' days ago';
 }
 
-function setLevel(n) {
-    if (n >= 3) return 'Interview ready';
-    if (n === 2) return 'Getting solid';
-    if (n === 1) return 'Learning';
+function describeSetLevel(sets) {
+    if (sets >= READY_SET_TARGET) return 'Interview ready';
+    if (sets === 2) return 'Getting solid';
+    if (sets === 1) return 'Learning';
     return 'Not revised yet';
 }
 
-function dayKey(d = new Date()) {
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+function getDayKey(date = new Date()) {
+    return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
 }
 
-const daySecs = d => parseInt(ls.get(K.day + dayKey(d))) || 0;
+const getDaySeconds = date => parseInt(storage.get(STORAGE_KEYS.day + getDayKey(date))) || 0;
 
-function streakDays() {
-    const d = new Date();
-    if (!daySecs(d)) d.setDate(d.getDate() - 1);
-    let n = 0;
-    while (daySecs(d) > 0) { n++; d.setDate(d.getDate() - 1); }
-    return n;
+function getStreakDays() {
+    const date = new Date();
+    if (!getDaySeconds(date)) date.setDate(date.getDate() - 1);
+    let streak = 0;
+    while (getDaySeconds(date) > 0) {
+        streak++;
+        date.setDate(date.getDate() - 1);
+    }
+    return streak;
 }
 
-function paintStudy() {
-    const a = document.getElementById('streakNum');
-    const b = document.getElementById('todayTime');
-    if (a) a.textContent = streakDays();
-    if (b) b.textContent = fmtShort(daySecs(new Date()));
+function paintStudyMeter() {
+    setText('streakCount', getStreakDays());
+    setText('todayTime', formatShort(getDaySeconds(new Date())));
 }
 
-function findQ(id) {
-    const list = allQuestionsCache[activeTopic?.id] || [];
-    return list.find(x => x.id == id);
+function getQuestions(topicId) {
+    return state.questionCache[topicId] || [];
 }
 
-function readSeconds(q) {
-    const strip = s => String(s || '').replace(/<[^>]*>/g, ' ');
-    const words = (strip(q?.answer) + ' ' + strip(q?.description) + ' ' + (Array.isArray(q?.points) ? q.points.join(' ') : '')).split(/\s+/).filter(Boolean).length;
+function findQuestion(id) {
+    return getQuestions(state.activeTopic?.id).find(question => String(question.id) === String(id));
+}
+
+function getVisibleQuestions() {
+    let questions = getQuestions(state.activeTopic?.id);
+    if (state.difficultyFilter !== 'all') questions = questions.filter(question => question.difficulty === state.difficultyFilter);
+    if (state.statusFilter !== 'all') questions = questions.filter(question => statusOf(question) === state.statusFilter);
+    return questions;
+}
+
+function estimateReadSeconds(question) {
+    const stripTags = text => String(text || '').replace(/<[^>]*>/g, ' ');
+    const points = Array.isArray(question?.points) ? question.points.join(' ') : '';
+    const words = (stripTags(question?.answer) + ' ' + stripTags(question?.description) + ' ' + points).split(/\s+/).filter(Boolean).length;
     return Math.max(20, Math.round((words / 180) * 60));
 }
 
-function readTimeLabel(q) {
-    const s = readSeconds(q);
-    return s < 60 ? `~${s}s` : `~${Math.ceil(s / 60)} min`;
+function formatReadEstimate(question) {
+    const seconds = estimateReadSeconds(question);
+    return seconds < 60 ? `about ${seconds}s` : `about ${Math.ceil(seconds / 60)} min`;
 }
 
-const timer = { id: null, iv: null, session: 0, est: 60, ticks: 0 };
-
-function startTimer(id) {
-    stopTimer();
-    timer.id = id;
-    timer.session = 0;
-    timer.ticks = 0;
-    timer.est = readSeconds(findQ(id));
-    timer.iv = setInterval(tickTimer, 1000);
-    paintTracker(id);
+function startStudyTimer(questionId) {
+    stopStudyTimer();
+    studyTimer.questionId = questionId;
+    studyTimer.sessionSeconds = 0;
+    studyTimer.tickCount = 0;
+    studyTimer.estimateSeconds = estimateReadSeconds(findQuestion(questionId));
+    studyTimer.intervalId = setInterval(tickStudyTimer, 1000);
+    paintTracker(questionId);
 }
 
-function stopTimer() {
-    if (timer.iv) clearInterval(timer.iv);
-    timer.iv = null;
-    timer.id = null;
+function stopStudyTimer() {
+    if (studyTimer.intervalId) clearInterval(studyTimer.intervalId);
+    studyTimer.intervalId = null;
+    studyTimer.questionId = null;
 }
 
-function tickTimer() {
-    if (document.hidden || !timer.id) return;
-    timer.session++;
-    timer.ticks++;
-    ls.set(K.time + timer.id, String(getTime(timer.id) + 1));
-    const dk = K.day + dayKey();
-    ls.set(dk, String((parseInt(ls.get(dk)) || 0) + 1));
-    paintTracker(timer.id, true);
-    paintStudy();
-    if (timer.ticks % 10 === 0 && activeTopic) renderTopicStats(activeTopic.id);
+function tickStudyTimer() {
+    if (document.hidden || !studyTimer.questionId) return;
+    studyTimer.sessionSeconds++;
+    studyTimer.tickCount++;
+    storage.set(STORAGE_KEYS.time + studyTimer.questionId, String(getTime(studyTimer.questionId) + 1));
+    const dayKey = STORAGE_KEYS.day + getDayKey();
+    storage.set(dayKey, String((parseInt(storage.get(dayKey)) || 0) + 1));
+    paintTracker(studyTimer.questionId, true);
+    paintStudyMeter();
+    if (studyTimer.tickCount % 10 === 0 && state.activeTopic) renderTopicStats(state.activeTopic.id);
 }
 
-function paintTracker(id, live) {
-    const box = document.getElementById('trk-' + id);
-    if (!box) return;
-    const set = (k, v) => { const el = box.querySelector(`[data-t="${k}"]`); if (el && el.textContent !== String(v)) el.textContent = v; };
-    const isTimed = timer.id == id;
-    const sess = isTimed ? timer.session : 0;
-    const est = isTimed ? timer.est : readSeconds(findQ(id));
-    set('session', fmtClock(sess));
-    set('est', `of ${readTimeLabel(findQ(id))} estimate`);
-    set('total', fmtClock(getTime(id)));
-    set('sets', getSets(id));
-    set('level', setLevel(getSets(id)));
-    set('opens', getReads(id));
-    set('last', 'last read ' + relTime(getLastRead(id)));
-    const bar = box.querySelector('[data-t="bar"]');
-    if (bar) {
-        const pct = Math.min(100, Math.round((sess / est) * 100));
-        bar.style.width = pct + '%';
-        bar.classList.toggle('full', pct >= 100);
-    }
-    if (!live) paintBadges(id);
-}
-
-function paintBadges(id, bump) {
-    const reads = document.querySelector(`.mini-badge.read[data-b="${id}"]`);
-    const sets = document.querySelector(`.mini-badge.sets[data-b="${id}"]`);
-    const apply = (el, n, icon) => {
-        if (!el) return;
-        el.classList.toggle('is-zero', !n);
-        el.innerHTML = `<i class="bi ${icon}"></i><b>${n}</b>`;
-        if (bump) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+function paintTracker(id, isLive) {
+    const tracker = $('tracker-' + id);
+    if (!tracker) return;
+    const setField = (name, value) => {
+        const element = tracker.querySelector(`[data-field="${name}"]`);
+        if (element && element.textContent !== String(value)) element.textContent = value;
     };
-    apply(reads, getReads(id), 'bi-eye');
-    apply(sets, getSets(id), 'bi-arrow-repeat');
+    const question = findQuestion(id);
+    const isTimed = String(studyTimer.questionId) === String(id);
+    const session = isTimed ? studyTimer.sessionSeconds : 0;
+    const estimate = isTimed ? studyTimer.estimateSeconds : estimateReadSeconds(question);
+    setField('session', formatClock(session));
+    setField('estimate', `of ${formatReadEstimate(question)}`);
+    setField('total', formatClock(getTime(id)));
+    setField('sets', getSets(id));
+    setField('level', describeSetLevel(getSets(id)));
+    setField('opens', getReads(id));
+    setField('last', 'last read ' + formatRelativeDay(getLastRead(id)));
+    const bar = tracker.querySelector('[data-field="bar"]');
+    if (bar) {
+        const percent = Math.min(100, Math.round((session / estimate) * 100));
+        bar.style.width = percent + '%';
+        bar.classList.toggle('is-full', percent >= 100);
+    }
+    if (!isLive) paintQuestionBadges(id);
+}
+
+function buildPips(sets) {
+    let markup = '';
+    for (let index = 0; index < READY_SET_TARGET; index++) {
+        markup += `<i class="pip${index < sets ? ' is-on' : ''}"></i>`;
+    }
+    return markup;
+}
+
+function paintQuestionBadges(id, shouldBump) {
+    const sets = getSets(id);
+    const reads = getReads(id);
+    const pips = document.querySelector(`[data-pips-for="${id}"]`);
+    const readCount = document.querySelector(`[data-reads-for="${id}"]`);
+    if (pips) {
+        pips.innerHTML = buildPips(sets);
+        pips.title = `${sets} completed ${sets === 1 ? 'set' : 'sets'} · ${describeSetLevel(sets)}`;
+        if (shouldBump) {
+            pips.classList.remove('is-bumping');
+            void pips.offsetWidth;
+            pips.classList.add('is-bumping');
+        }
+    }
+    if (readCount) {
+        readCount.classList.toggle('is-zero', !reads);
+        readCount.innerHTML = `<i class="bi bi-eye"></i>${reads}`;
+    }
 }
 
 function completeSet(id, event) {
-    event.stopPropagation();
-    ls.set(K.sets + id, String(getSets(id) + 1));
+    storage.set(STORAGE_KEYS.sets + id, String(getSets(id) + 1));
     paintTracker(id);
-    paintBadges(id, true);
-    const q = findQ(id);
-    if (q && statusOf(q) === 'new') setStatus(id, 'reading');
-    if (activeTopic) renderTopicStats(activeTopic.id);
-    const n = getSets(id);
-    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Set ${n} complete · ${setLevel(n)}`, timer: 1800, showConfirmButton: false });
-    if (n === 3) burstConfetti(event.clientX, event.clientY);
+    paintQuestionBadges(id, true);
+    const question = findQuestion(id);
+    if (question && statusOf(question) === 'new') setStatus(id, 'reading');
+    if (state.activeTopic) renderTopicStats(state.activeTopic.id);
+    paintOverview();
+    const sets = getSets(id);
+    showToast('success', `Set ${sets} complete. ${describeSetLevel(sets)}`);
+    if (sets === READY_SET_TARGET) burstConfetti(event.clientX, event.clientY);
 }
 
 function bumpRead(id) {
-    ls.set(K.reads + id, String(getReads(id) + 1));
-    ls.set(K.last + id, String(Date.now()));
-    paintBadges(id, true);
+    storage.set(STORAGE_KEYS.reads + id, String(getReads(id) + 1));
+    storage.set(STORAGE_KEYS.lastRead + id, String(Date.now()));
     paintTracker(id);
-    if (activeTopic) renderTopicStats(activeTopic.id);
+    if (state.activeTopic) renderTopicStats(state.activeTopic.id);
 }
 
-function getOpenMap() {
-    try { return JSON.parse(ls.get(K.openMap)) || {}; } catch (_) { return {}; }
+function getOpenQuestionMap() {
+    try { return JSON.parse(storage.get(STORAGE_KEYS.openQuestions)) || {}; } catch (_) { return {}; }
 }
 
-function saveOpen(topicId, qid) {
-    const m = getOpenMap();
-    if (qid) m[topicId] = String(qid); else delete m[topicId];
-    ls.set(K.openMap, JSON.stringify(m));
+function saveOpenQuestion(topicId, questionId) {
+    const map = getOpenQuestionMap();
+    if (questionId) map[topicId] = String(questionId); else delete map[topicId];
+    storage.set(STORAGE_KEYS.openQuestions, JSON.stringify(map));
 }
 
-function getOpen(topicId) {
-    return getOpenMap()[topicId] || null;
-}
-
-function setPanelH() {
-    const s = document.getElementById('qScroll');
-    if (s) s.style.setProperty('--panel-h', s.clientHeight + 'px');
+function getSavedOpenQuestion(topicId) {
+    return getOpenQuestionMap()[topicId] || null;
 }
 
 function burstConfetti(x, y) {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const cx = x || innerWidth / 2;
-    const cy = y || 160;
-    const colors = ['#0d9488', '#22c3a6', '#0891d1', '#e89209', '#ee5d54', '#12a66f'];
-    for (let i = 0; i < 44; i++) {
-        const p = document.createElement('i');
-        p.className = 'confetti-piece';
+    const originX = x || innerWidth / 2;
+    const originY = y || 160;
+    for (let index = 0; index < 44; index++) {
+        const piece = document.createElement('i');
+        piece.className = 'confetti-piece';
         const angle = Math.random() * Math.PI * 2;
-        const dist = 90 + Math.random() * 190;
-        p.style.left = cx + 'px';
-        p.style.top = cy + 'px';
-        p.style.background = colors[i % colors.length];
-        p.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
-        p.style.setProperty('--dy', Math.sin(angle) * dist - 60 + 'px');
-        p.style.setProperty('--rot', Math.round(Math.random() * 720 - 360) + 'deg');
-        p.style.animationDelay = Math.random() * 120 + 'ms';
-        document.body.appendChild(p);
-        setTimeout(() => p.remove(), 1800);
+        const distance = 90 + Math.random() * 190;
+        piece.style.left = originX + 'px';
+        piece.style.top = originY + 'px';
+        piece.style.background = CONFETTI_COLORS[index % CONFETTI_COLORS.length];
+        piece.style.setProperty('--drift-x', Math.cos(angle) * distance + 'px');
+        piece.style.setProperty('--drift-y', Math.sin(angle) * distance - 60 + 'px');
+        piece.style.setProperty('--spin', Math.round(Math.random() * 720 - 360) + 'deg');
+        piece.style.animationDelay = Math.random() * 120 + 'ms';
+        document.body.appendChild(piece);
+        setTimeout(() => piece.remove(), 1800);
     }
 }
 
-function paintStatusButtons(id, status) {
+function paintStatusControls(id, status) {
     const meta = STATUS_META[status] || STATUS_META.new;
-    document.querySelectorAll(`[data-qid="${id}"]`).forEach(btn => {
-        const foot = btn.classList.contains('status-btn-foot');
-        btn.dataset.status = status;
-        btn.className = `status-btn ${meta.cls}${foot ? ' status-btn-foot' : ''}`;
-        btn.innerHTML = `<i class="bi ${meta.icon}"></i><span>${meta.label}</span>`;
-        btn.title = `Mark as ${STATUS_CYCLE[status]}`;
-        btn.setAttribute('onclick', `cycleStatus(${id},'${status}',event)`);
+    document.querySelectorAll(`[data-status-button="${id}"]`).forEach(button => {
+        const isLarge = button.classList.contains('is-large');
+        button.dataset.status = status;
+        button.className = `status-chip is-${status}${isLarge ? ' is-large' : ''}`;
+        button.innerHTML = `<i class="bi ${meta.icon}"></i><span>${meta.label}</span>`;
+        button.title = `Mark as ${STATUS_NEXT[status]}`;
     });
-    const card = document.getElementById('qcard-' + id);
-    if (card) {
-        card.classList.remove('st-new', 'st-reading', 'st-done');
-        card.classList.add('st-' + status);
+    const row = $('question-row-' + id);
+    if (row) {
+        row.classList.remove('status-new', 'status-reading', 'status-done');
+        row.classList.add('status-' + status);
     }
 }
 
 async function setStatus(id, next) {
-    const q = findQ(id);
-    const prev = q ? statusOf(q) : 'new';
-    if (q) q.status = next;
-    paintStatusButtons(id, next);
-    updateTopicProgress(activeTopic?.id);
+    const question = findQuestion(id);
+    const previous = question ? statusOf(question) : 'new';
+    if (question) question.status = next;
+    paintStatusControls(id, next);
+    updateTopicProgress(state.activeTopic?.id);
 
-    let saved = false;
-    try {
-        const r = await req('update_status', 'POST', { id, status: next });
-        saved = !r || r.success !== false;
-    } catch (_) {}
+    const response = await apiRequest('update_status', 'POST', { id, status: next });
+    const saved = !response || response.success !== false;
 
     if (!saved) {
-        if (q) q.status = prev;
-        paintStatusButtons(id, prev);
-        updateTopicProgress(activeTopic?.id);
-        Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Could not save status', timer: 2000, showConfirmButton: false });
+        if (question) question.status = previous;
+        paintStatusControls(id, previous);
+        updateTopicProgress(state.activeTopic?.id);
+        showToast('error', 'Could not save status');
     }
     return saved;
 }
 
 async function cycleStatus(id, current, event) {
-    event.stopPropagation();
-    const next = STATUS_CYCLE[current] || 'new';
-    const x = event.clientX, y = event.clientY;
+    const next = STATUS_NEXT[current] || 'new';
+    const originX = event.clientX;
+    const originY = event.clientY;
     const saving = setStatus(id, next);
 
-    document.querySelectorAll(`[data-qid="${id}"]`).forEach(b => {
-        b.classList.add('status-animating');
-        setTimeout(() => b.classList.remove('status-animating'), 420);
+    document.querySelectorAll(`[data-status-button="${id}"]`).forEach(button => {
+        button.classList.add('is-swapping');
+        setTimeout(() => button.classList.remove('is-swapping'), 420);
     });
-    const card = document.getElementById('qcard-' + id);
-    if (card) {
-        card.classList.add('status-flash');
-        setTimeout(() => card.classList.remove('status-flash'), 700);
+    const row = $('question-row-' + id);
+    if (row) {
+        row.classList.add('is-flashing');
+        setTimeout(() => row.classList.remove('is-flashing'), 700);
     }
     if (next === 'done') {
-        const qs = allQuestionsCache[activeTopic?.id] || [];
-        if (qs.length && qs.every(q => statusOf(q) === 'done')) burstConfetti(x, y);
+        const questions = getQuestions(state.activeTopic?.id);
+        if (questions.length && questions.every(question => statusOf(question) === 'done')) burstConfetti(originX, originY);
     }
 
     if (!(await saving)) return;
-    if (activeStatusFilter !== 'all' && next !== activeStatusFilter && card) {
-        card.style.transition = 'opacity .35s, transform .35s';
-        card.style.opacity = '0';
-        card.style.transform = 'translateX(18px)';
-        if (timer.id == id) stopTimer();
-        saveOpen(activeTopic.id, null);
-        setTimeout(() => { card.remove(); checkEmptyState(); }, 360);
-    }
+    if (state.statusFilter !== 'all' && next !== state.statusFilter) removeQuestionRow(id);
 }
 
-function checkEmptyState() {
-    const scroll = document.getElementById('qScroll');
-    if (!scroll.querySelectorAll('.q-card').length) {
-        scroll.innerHTML = '<div class="empty-state"><i class="bi bi-inbox"></i><p>No questions match this filter.</p></div>';
-    }
+function removeQuestionRow(id) {
+    const row = $('question-row-' + id);
+    if (!row) return;
+    const wasSelected = String(state.selectedQuestionId) === String(id);
+    const neighbour = [row.nextElementSibling, row.previousElementSibling].find(sibling => sibling && sibling.classList.contains('question-row'));
+    row.classList.add('is-leaving');
+    setTimeout(() => {
+        row.remove();
+        const list = $('questionList');
+        if (!list.querySelector('.question-row')) {
+            renderQuestionList();
+            return;
+        }
+        renumberQuestionRows();
+        if (!wasSelected) {
+            paintReaderPosition();
+            return;
+        }
+        if (neighbour && neighbour.isConnected && isSplitView()) selectQuestion(neighbour.dataset.id, { countRead: false });
+        else closeReader();
+    }, 320);
+}
+
+function renumberQuestionRows() {
+    $('questionList').querySelectorAll('.question-row').forEach((row, index) => {
+        const number = row.querySelector('.question-row-number');
+        if (number) number.textContent = index + 1;
+    });
 }
 
 function renderTopicStats(topicId) {
-    const box = document.getElementById('topicStats');
+    const box = $('topicStats');
     if (!box) return;
-    const qs = allQuestionsCache[topicId];
-    if (!qs) { box.innerHTML = ''; return; }
-    let nNew = 0, nReading = 0, nDone = 0, nSets = 0, secs = 0;
-    qs.forEach(q => {
-        const s = statusOf(q);
-        if (s === 'done') nDone++; else if (s === 'reading') nReading++; else nNew++;
-        nSets += getSets(q.id);
-        secs += getTime(q.id);
-    });
-    const total = qs.length;
-    const pct = total ? Math.round((nDone / total) * 100) : 0;
-    const prev = box.querySelector('.ring-fg');
-    if (!prev) {
-        box.innerHTML = `
-            <div class="stats-ring">
-                <svg viewBox="0 0 44 44" aria-hidden="true">
-                    <defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" style="stop-color:var(--a)"></stop><stop offset="100%" style="stop-color:var(--sky)"></stop></linearGradient></defs>
-                    <circle class="ring-bg" cx="22" cy="22" r="18"></circle>
-                    <circle class="ring-fg" cx="22" cy="22" r="18" pathLength="100" stroke-dasharray="0 100"></circle>
-                </svg>
-                <span class="ring-pct"></span>
-            </div>
-            <div class="stats-body">
-                <div class="stats-chips">
-                    <span class="stat-chip sc-reading"><i class="bi bi-book-half"></i><b data-k="reading"></b> reading</span>
-                    <span class="stat-chip"><i class="bi bi-circle"></i><b data-k="new"></b> new</span>
-                    <span class="stat-chip sc-sets" title="Completed revision sets"><i class="bi bi-arrow-repeat"></i><b data-k="sets"></b> sets</span>
-                    <span class="stat-chip sc-time" title="Total study time in this topic"><i class="bi bi-stopwatch"></i><b data-k="time"></b></span>
-                </div>
-            </div>`;
-        box.querySelector('.ring-fg').getBoundingClientRect();
+    const questions = state.questionCache[topicId];
+    if (!questions) {
+        box.innerHTML = '';
+        return;
     }
-    const setChip = (k, v) => {
-        const el = box.querySelector(`[data-k="${k}"]`);
-        if (el && el.textContent !== String(v)) {
-            el.textContent = v;
-            const chip = el.closest('.stat-chip');
-            chip.classList.remove('bump');
-            void chip.offsetWidth;
-            chip.classList.add('bump');
-        }
+    let newCount = 0;
+    let readingCount = 0;
+    let doneCount = 0;
+    let setCount = 0;
+    let seconds = 0;
+    questions.forEach(question => {
+        const status = statusOf(question);
+        if (status === 'done') doneCount++;
+        else if (status === 'reading') readingCount++;
+        else newCount++;
+        setCount += getSets(question.id);
+        seconds += getTime(question.id);
+    });
+    const total = questions.length;
+    const percent = total ? Math.round((doneCount / total) * 100) : 0;
+
+    if (!box.querySelector('.ring-value')) {
+        box.innerHTML = `
+            <div class="progress-ring">
+                <svg viewBox="0 0 44 44" aria-hidden="true">
+                    <circle class="ring-track" cx="22" cy="22" r="18"></circle>
+                    <circle class="ring-value" cx="22" cy="22" r="18" pathLength="100" stroke-dasharray="0 100"></circle>
+                </svg>
+                <span class="ring-label"></span>
+            </div>
+            <div class="stat-chips">
+                <span class="stat-chip stat-chip-done" title="Questions marked done"><i class="bi bi-check-circle-fill"></i><b data-metric="done"></b> done</span>
+                <span class="stat-chip stat-chip-reading"><i class="bi bi-book-half"></i><b data-metric="reading"></b> reading</span>
+                <span class="stat-chip"><i class="bi bi-circle"></i><b data-metric="new"></b> new</span>
+                <span class="stat-chip stat-chip-sets" title="Completed revision sets"><i class="bi bi-arrow-repeat"></i><b data-metric="sets"></b> sets</span>
+                <span class="stat-chip stat-chip-time" title="Total study time in this topic"><i class="bi bi-stopwatch"></i><b data-metric="time"></b></span>
+            </div>`;
+        box.querySelector('.ring-value').getBoundingClientRect();
+    }
+
+    const setMetric = (name, value) => {
+        const element = box.querySelector(`[data-metric="${name}"]`);
+        if (!element || element.textContent === String(value)) return;
+        element.textContent = value;
+        const chip = element.closest('.stat-chip');
+        chip.classList.remove('is-bumping');
+        void chip.offsetWidth;
+        chip.classList.add('is-bumping');
     };
-    box.querySelector('.ring-fg').setAttribute('stroke-dasharray', `${pct} 100`);
-    box.querySelector('.stats-ring').classList.toggle('complete', pct === 100);
-    box.querySelector('.ring-pct').textContent = pct + '%';
-    setChip('reading', nReading);
-    setChip('new', nNew);
-    setChip('sets', nSets);
-    setChip('time', fmtShort(secs));
+
+    box.querySelector('.ring-value').setAttribute('stroke-dasharray', `${percent} 100`);
+    box.querySelector('.progress-ring').classList.toggle('is-complete', percent === 100);
+    box.querySelector('.ring-label').textContent = percent + '%';
+    setMetric('done', doneCount);
+    setMetric('reading', readingCount);
+    setMetric('new', newCount);
+    setMetric('sets', setCount);
+    setMetric('time', formatShort(seconds));
 }
 
 function updateTopicProgress(topicId) {
-    if (!topicId || !allQuestionsCache[topicId]) return;
-    if (activeTopic && activeTopic.id == topicId) renderTopicStats(topicId);
-    const qs = allQuestionsCache[topicId];
-    const total = qs.length;
+    if (!topicId || !state.questionCache[topicId]) return;
+    if (state.activeTopic && String(state.activeTopic.id) === String(topicId)) renderTopicStats(topicId);
+    const questions = state.questionCache[topicId];
+    const total = questions.length;
     if (!total) return;
-    const done = qs.filter(q => statusOf(q) === 'done').length;
-    const pct = Math.round((done / total) * 100);
-    const bar = document.querySelector(`.topic-progress-bar[data-tid="${topicId}"]`);
-    const lbl = document.querySelector(`.topic-progress-lbl[data-tid="${topicId}"]`);
-    if (bar) {
-        bar.style.width = pct + '%';
-        bar.className = `topic-progress-bar${pct === 100 ? ' complete' : ''}`;
+    const done = questions.filter(question => statusOf(question) === 'done').length;
+    const percent = Math.round((done / total) * 100);
+    const fill = document.querySelector(`[data-topic-fill="${topicId}"]`);
+    const label = document.querySelector(`[data-topic-done="${topicId}"]`);
+    if (fill) {
+        fill.style.width = percent + '%';
+        fill.classList.toggle('is-complete', percent === 100);
     }
-    if (lbl) lbl.textContent = `${done}/${total}`;
+    if (label) label.textContent = `${done}/${total}`;
+    paintOverview();
 }
 
-async function loadTopics() {
-    const r = await req('get_topics');
-    if (!r.success) return;
-    topics = r.data;
-    await Promise.all(topics.map(t => preloadTopicProgress(t.id)));
-    renderTopics();
-    restoreState();
+function paintOverview() {
+    const questions = Object.values(state.questionCache).flat();
+    const total = questions.length;
+    const done = questions.filter(question => statusOf(question) === 'done').length;
+    const ready = questions.filter(question => getSets(question.id) >= READY_SET_TARGET).length;
+    const percent = total ? Math.round((done / total) * 100) : 0;
+    const fill = $('overviewFill');
+    if (fill) fill.style.width = percent + '%';
+    if (!state.topics.length) {
+        setText('overviewText', 'No topics yet. Create your first topic to get started.');
+        return;
+    }
+    setText('overviewText', `${done} of ${total} questions done across ${state.topics.length} ${state.topics.length === 1 ? 'topic' : 'topics'}. ${ready} interview ready.`);
 }
 
-async function preloadTopicProgress(topicId) {
-    if (allQuestionsCache[topicId]) return;
-    try {
-        const r = await req('get_questions', 'GET', null, { topic_id: topicId });
-        if (r.success) allQuestionsCache[topicId] = r.data;
-    } catch (_) {}
+async function loadTopics(preferredTopicId) {
+    const response = await apiRequest('get_topics');
+    if (!response.success) {
+        setText('overviewText', response.message || 'Could not load topics.');
+        return;
+    }
+    state.topics = response.data;
+    await Promise.all(state.topics.map(topic => preloadTopicQuestions(topic.id)));
+    renderTopicList();
+    paintOverview();
+    const targetId = preferredTopicId ?? storage.get(STORAGE_KEYS.activeTopic);
+    const topic = state.topics.find(item => String(item.id) === String(targetId));
+    if (topic) selectTopic(topic, true);
 }
 
-function saveState() {
-    if (activeTopic) ls.set(K.topic, activeTopic.id);
-    ls.set(K.filter, activeFilter);
-    ls.set(K.statusFilter, activeStatusFilter);
+async function preloadTopicQuestions(topicId) {
+    if (state.questionCache[topicId]) return;
+    const response = await apiRequest('get_questions', 'GET', null, { topic_id: topicId });
+    if (response.success) state.questionCache[topicId] = response.data;
 }
 
-function syncPills() {
-    document.querySelectorAll('.diff-pill').forEach(p => p.classList.toggle('active', p.dataset.f === activeFilter));
-    document.querySelectorAll('.status-pill').forEach(p => p.classList.toggle('active', p.dataset.s === activeStatusFilter));
+async function refreshWorkspace() {
+    state.questionCache = {};
+    await loadTopics(state.activeTopic?.id);
 }
 
-function restoreState() {
-    const savedTopicId = ls.get(K.topic);
-    if (!savedTopicId) return;
-    const t = topics.find(x => x.id == savedTopicId);
-    if (!t) return;
-    activeStatusFilter = ls.get(K.statusFilter) || 'all';
-    syncPills();
-    selectTopic(t, true);
+function persistFilters() {
+    if (state.activeTopic) storage.set(STORAGE_KEYS.activeTopic, state.activeTopic.id);
+    storage.set(STORAGE_KEYS.statusFilter, state.statusFilter);
+    storage.set(STORAGE_KEYS.difficultyFilter, state.difficultyFilter);
 }
 
-function renderTopics() {
-    const list = document.getElementById('topicList');
-    list.innerHTML = '';
-    topics.forEach(t => {
-        const cached = allQuestionsCache[t.id];
-        const total = parseInt(t.question_count) || 0;
-        const done = cached ? cached.filter(q => statusOf(q) === 'done').length : 0;
-        const pct = total ? Math.round((done / total) * 100) : 0;
-        const el = document.createElement('div');
-        el.className = 'topic-item' + (activeTopic?.id == t.id ? ' active' : '');
-        el.dataset.id = t.id;
-        el.innerHTML = `
-            <div class="topic-icon" style="background:${t.color}22;color:${t.color}"><i class="bi ${t.icon}"></i></div>
-            <div class="topic-meta">
-                <span class="topic-name">${esc(t.name)}</span>
-                <div class="topic-progress-track"><div class="topic-progress-bar${pct === 100 ? ' complete' : ''}" data-tid="${t.id}" style="width:${pct}%"></div></div>
-            </div>
-            <div class="topic-right">
-                <span class="topic-count">${t.question_count}</span>
-                <span class="topic-progress-lbl" data-tid="${t.id}">${done ? done + '/' + total : ''}</span>
-            </div>
-            <div class="topic-actions">
-                <button onclick="openEditTopic(event,${t.id})" title="Edit"><i class="bi bi-pencil"></i></button>
-                <button class="del-btn" onclick="deleteTopic(event,${t.id})" title="Delete"><i class="bi bi-trash"></i></button>
-            </div>`;
-        el.addEventListener('click', () => { selectTopic(t); if (typeof closeSidebar === 'function') closeSidebar(); });
-        list.appendChild(el);
+function restoreFilters() {
+    state.statusFilter = storage.get(STORAGE_KEYS.statusFilter) || 'all';
+    state.difficultyFilter = storage.get(STORAGE_KEYS.difficultyFilter) || 'all';
+    state.practiceMode = storage.get(STORAGE_KEYS.practiceMode) === '1';
+    syncFilterButtons();
+}
+
+function syncFilterButtons() {
+    document.querySelectorAll('[data-action="filter-status"]').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.value === state.statusFilter);
+    });
+    document.querySelectorAll('[data-action="filter-difficulty"]').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.value === state.difficultyFilter);
     });
 }
 
-function showTopicChrome(show) {
-    document.getElementById('mainBar').style.display = show ? 'flex' : 'none';
-}
-
-function selectTopic(t, skipSave) {
-    stopTimer();
-    activeTopic = t;
-    if (!skipSave) {
-        activeFilter = 'all';
-        activeStatusFilter = 'all';
-        syncPills();
-    }
-    renderTopics();
-    document.getElementById('mainTitle').textContent = t.name;
-    document.getElementById('mainIcon').innerHTML = `<i class="bi ${t.icon}" style="color:${t.color}"></i>`;
-    document.getElementById('topAddQBtn').style.display = 'inline-flex';
-    document.getElementById('mbnAddQ').style.display = 'flex';
-    showTopicChrome(true);
-    document.getElementById('welcomeScreen').style.display = 'none';
-    document.getElementById('qScroll').style.display = 'block';
-    setPanelH();
-    renderTopicStats(t.id);
-    loadQuestions(t.id);
-    saveState();
-}
-
-async function loadQuestions(topicId) {
-    const scroll = document.getElementById('qScroll');
-    scroll.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
-    const r = await req('get_questions', 'GET', null, { topic_id: topicId });
-    if (!r.success) {
-        scroll.innerHTML = '<div class="empty-state"><i class="bi bi-exclamation-circle"></i><p>Failed to load questions. Check your connection and try again.</p></div>';
+function renderTopicList() {
+    const list = $('topicList');
+    if (!state.topics.length) {
+        list.innerHTML = '<div class="rail-empty"><i class="bi bi-folder2-open"></i><p>No topics yet. Add one to start collecting questions.</p></div>';
         return;
     }
-    allQuestionsCache[topicId] = r.data;
-    renderQuestions(allQuestionsCache[topicId], topicId);
-    updateTopicProgress(topicId);
-    renderTopics();
+    list.innerHTML = state.topics.map(topic => {
+        const questions = state.questionCache[topic.id];
+        const total = parseInt(topic.question_count) || 0;
+        const done = questions ? questions.filter(question => statusOf(question) === 'done').length : 0;
+        const percent = total ? Math.round((done / total) * 100) : 0;
+        const isActive = String(state.activeTopic?.id) === String(topic.id);
+        return `
+        <div class="topic-item${isActive ? ' is-active' : ''}" role="button" tabindex="0" data-action="select-topic" data-id="${topic.id}" style="--topic-color:${escapeHtml(topic.color)}">
+            <span class="topic-badge"><i class="bi ${escapeHtml(topic.icon)}"></i></span>
+            <span class="topic-info">
+                <span class="topic-name">${escapeHtml(topic.name)}</span>
+                <span class="topic-meter"><span class="topic-meter-fill${percent === 100 ? ' is-complete' : ''}" data-topic-fill="${topic.id}" style="width:${percent}%"></span></span>
+            </span>
+            <span class="topic-tally">
+                <span class="topic-total">${topic.question_count}</span>
+                <span class="topic-done-label" data-topic-done="${topic.id}">${done ? done + '/' + total : ''}</span>
+            </span>
+            <span class="topic-tools">
+                <button type="button" data-action="edit-topic" data-id="${topic.id}" title="Edit topic" aria-label="Edit topic"><i class="bi bi-pencil"></i></button>
+                <button type="button" class="is-danger" data-action="delete-topic" data-id="${topic.id}" title="Delete topic" aria-label="Delete topic"><i class="bi bi-trash"></i></button>
+            </span>
+        </div>`;
+    }).join('');
 }
 
-function isRichHtml(str) {
-    return /<(p|ul|ol|li|strong|em|h[123]|blockquote|br|pre)[^>]*>/i.test(str);
+function showStage(mode) {
+    $('welcomeScreen').hidden = mode !== 'welcome';
+    $('studyDesk').hidden = mode !== 'desk';
+}
+
+function showPaneHeader(show) {
+    $('paneHeader').hidden = !show;
+}
+
+function toggleQuestionButtons(show) {
+    $('topbarAddQuestion').hidden = !show;
+    $('navAddQuestion').hidden = !show;
+}
+
+function showReaderEmpty() {
+    $('readerEmpty').hidden = false;
+    $('readerContent').hidden = true;
+    document.body.classList.remove('reader-open');
+}
+
+function selectTopic(topic, keepFilters) {
+    stopStudyTimer();
+    state.activeTopic = topic;
+    state.selectedQuestionId = null;
+    state.isSearching = false;
+    $('searchInput').value = '';
+    if (!keepFilters) {
+        state.statusFilter = 'all';
+        state.difficultyFilter = 'all';
+    }
+    syncFilterButtons();
+    renderTopicList();
+    $('paneTopicName').textContent = topic.name;
+    $('paneTopicIcon').innerHTML = `<i class="bi ${escapeHtml(topic.icon)}"></i>`;
+    $('paneTopicIcon').style.setProperty('--topic-color', topic.color);
+    toggleQuestionButtons(true);
+    showStage('desk');
+    showPaneHeader(true);
+    showReaderEmpty();
+    renderTopicStats(topic.id);
+    loadQuestions(topic.id);
+    persistFilters();
+}
+
+async function loadQuestions(topicId, forceReload) {
+    const list = $('questionList');
+    if (!forceReload && state.questionCache[topicId]) {
+        renderQuestionList();
+        return;
+    }
+    list.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+    const response = await apiRequest('get_questions', 'GET', null, { topic_id: topicId });
+    if (String(state.activeTopic?.id) !== String(topicId) || state.isSearching) return;
+    if (!response.success) {
+        list.innerHTML = '<div class="empty-state"><i class="bi bi-exclamation-circle"></i><p>Questions could not be loaded. Check your connection and try again.</p></div>';
+        return;
+    }
+    state.questionCache[topicId] = response.data;
+    renderQuestionList();
+    updateTopicProgress(topicId);
+    renderTopicList();
+}
+
+function isRichHtml(text) {
+    return /<(p|ul|ol|li|strong|em|h[123]|blockquote|br|pre)[^>]*>/i.test(text);
 }
 
 function splitIntoSentences(text) {
-    const result = [];
-    let last = 0;
-    const re = /[.!?]+(?=\s|$)/g;
-    let m;
-    while ((m = re.exec(text))) {
-        const end = m.index + m[0].length;
-        result.push(text.slice(last, end));
-        last = end;
+    const sentences = [];
+    let lastIndex = 0;
+    const pattern = /[.!?]+(?=\s|$)/g;
+    let match;
+    while ((match = pattern.exec(text))) {
+        const end = match.index + match[0].length;
+        sentences.push(text.slice(lastIndex, end));
+        lastIndex = end;
     }
-    if (last < text.length) result.push(text.slice(last));
-    return result;
+    if (lastIndex < text.length) sentences.push(text.slice(lastIndex));
+    return sentences;
 }
 
 function wrapTextNodeSentences(node) {
     const text = node.nodeValue;
     if (!text || !text.trim() || !node.parentNode) return;
-    const frag = document.createDocumentFragment();
+    const fragment = document.createDocumentFragment();
     splitIntoSentences(text).forEach(part => {
-        if (!part.trim()) { frag.appendChild(document.createTextNode(part)); return; }
+        if (!part.trim()) {
+            fragment.appendChild(document.createTextNode(part));
+            return;
+        }
         const span = document.createElement('span');
-        span.className = 'sentence-hl';
+        span.className = 'sentence-mark';
         span.textContent = part;
-        frag.appendChild(span);
+        fragment.appendChild(span);
     });
-    node.parentNode.replaceChild(frag, node);
+    node.parentNode.replaceChild(fragment, node);
 }
 
 function wrapSentencesInNode(node) {
     if (node.nodeType === Node.TEXT_NODE) return wrapTextNodeSentences(node);
     if (node.nodeType !== Node.ELEMENT_NODE) return;
-    if (['PRE', 'CODE', 'SCRIPT', 'STYLE'].includes(node.tagName) || node.classList.contains('sentence-hl')) return;
+    if (['PRE', 'CODE', 'SCRIPT', 'STYLE'].includes(node.tagName) || node.classList.contains('sentence-mark')) return;
     Array.from(node.childNodes).forEach(wrapSentencesInNode);
 }
 
 function enhanceReadableSections(root) {
-    root.querySelectorAll('.q-answer, .q-desc, .q-point').forEach(c => Array.from(c.childNodes).forEach(wrapSentencesInNode));
-}
-
-const isBlankParagraph = p => (p.textContent || '').replace(/[\s\u00A0]/g, '').length === 0;
-const dashBulletMatch = p => (p.textContent || '').match(/^([\u00A0]*)-\s*(.*)$/s);
-
-function normalizeRichAnswer(el) {
-    const children = Array.from(el.children);
-    let i = 0;
-    while (i < children.length) {
-        const node = children[i];
-        if (node.tagName !== 'P') { i++; continue; }
-        if (isBlankParagraph(node)) { node.remove(); i++; continue; }
-        if (!dashBulletMatch(node)) { i++; continue; }
-        let j = i;
-        const items = [];
-        while (j < children.length) {
-            const n = children[j];
-            if (n.tagName !== 'P') break;
-            const m = dashBulletMatch(n);
-            if (!m) break;
-            items.push({ level: m[1].length, html: n.innerHTML.replace(/^(?:&nbsp;|\u00A0)*-\s*/, '') });
-            j++;
-        }
-        const ul = document.createElement('ul');
-        ul.className = 'q-answer-list';
-        let top = null;
-        items.forEach(it => {
-            const li = document.createElement('li');
-            li.innerHTML = it.html;
-            if (it.level > 0 && top) {
-                let sub = top.querySelector(':scope > ul.q-answer-sublist');
-                if (!sub) { sub = document.createElement('ul'); sub.className = 'q-answer-sublist'; top.appendChild(sub); }
-                sub.appendChild(li);
-            } else {
-                ul.appendChild(li);
-                top = li;
-            }
-        });
-        el.insertBefore(ul, children[i]);
-        for (let k = i; k < j; k++) children[k].remove();
-        i = j;
-    }
-}
-
-function renderQuestions(questions, topicId) {
-    const scroll = document.getElementById('qScroll');
-    let filtered = activeFilter === 'all' ? questions : questions.filter(q => q.difficulty === activeFilter);
-    if (activeStatusFilter !== 'all') filtered = filtered.filter(q => statusOf(q) === activeStatusFilter);
-
-    if (!filtered.length) {
-        scroll.innerHTML = '<div class="empty-state"><i class="bi bi-inbox"></i><p>No questions match this filter. Try another one.</p></div>';
-        return;
-    }
-
-    const tid = topicId || activeTopic?.id;
-    const savedOpen = getOpen(tid);
-    const openId = filtered.some(q => String(q.id) === savedOpen) ? savedOpen : null;
-    const savedScroll = ls.get(K.scroll + '_' + tid);
-
-    setPanelH();
-    scroll.innerHTML = filtered.map((q, i) => buildCard(q, i + 1, String(q.id) === openId)).join('');
-    scroll.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
-    scroll.querySelectorAll('.q-answer.rich-answer').forEach(normalizeRichAnswer);
-    highlightAnswerCode(scroll);
-    enhanceReadableSections(scroll);
-    scroll.querySelectorAll('.q-card.q-enter').forEach(c => c.addEventListener('animationend', () => c.classList.remove('q-enter'), { once: true }));
-
-    requestAnimationFrame(() => {
-        if (openId) {
-            const card = document.getElementById('qcard-' + openId);
-            if (card) {
-                scroll.style.scrollBehavior = 'auto';
-                scroll.scrollTop = Math.max(0, card.offsetTop - 12);
-                scroll.style.scrollBehavior = '';
-            }
-            startTimer(openId);
-        } else if (savedScroll) {
-            scroll.style.scrollBehavior = 'auto';
-            scroll.scrollTop = parseInt(savedScroll);
-            scroll.style.scrollBehavior = '';
-        }
+    root.querySelectorAll('.answer-content, .description-text, .key-point-text').forEach(section => {
+        Array.from(section.childNodes).forEach(wrapSentencesInNode);
     });
 }
 
-function buildCard(q, num, isOpen) {
-    const lang = q.language || 'python';
-    const hlLang = lang === 'text' ? 'plaintext' : lang;
-    const status = statusOf(q);
-    const meta = STATUS_META[status];
-    const diff = esc(q.difficulty);
+const isBlankParagraph = paragraph => (paragraph.textContent || '').replace(/[\s\u00A0]/g, '').length === 0;
+const matchDashBullet = paragraph => (paragraph.textContent || '').match(/^([\u00A0]*)-\s*(.*)$/s);
 
-    let answerHtml = '';
-    if (q.answer) {
-        if (isRichHtml(q.answer)) {
-            answerHtml = `<div class="q-answer rich-answer" data-lang="${esc(lang)}">${q.answer}</div>`;
-        } else {
-            const rendered = q.answer.split(/\n\n+/).filter(p => p.trim()).map(para => {
-                const t = para.trim();
-                if (t.startsWith('```') || /^(def |class |import |from |SELECT |INSERT |UPDATE |function |<\?php)/.test(t)) {
-                    return `<pre class="q-answer-code">${esc(t.replace(/^```\w*\n?/, '').replace(/```$/, '').trim())}</pre>`;
-                }
-                return `<p class="q-answer-para">${esc(t).replace(/\n/g, '<br>')}</p>`;
-            }).join('');
-            answerHtml = `<div class="q-answer">${rendered}</div>`;
+function normalizeRichAnswer(element) {
+    const children = Array.from(element.children);
+    let index = 0;
+    while (index < children.length) {
+        const node = children[index];
+        if (node.tagName !== 'P') { index++; continue; }
+        if (isBlankParagraph(node)) { node.remove(); index++; continue; }
+        if (!matchDashBullet(node)) { index++; continue; }
+        let end = index;
+        const items = [];
+        while (end < children.length) {
+            const candidate = children[end];
+            if (candidate.tagName !== 'P') break;
+            const match = matchDashBullet(candidate);
+            if (!match) break;
+            items.push({ level: match[1].length, html: candidate.innerHTML.replace(/^(?:&nbsp;|\u00A0)*-\s*/, '') });
+            end++;
         }
+        const list = document.createElement('ul');
+        list.className = 'answer-list';
+        let parentItem = null;
+        items.forEach(item => {
+            const listItem = document.createElement('li');
+            listItem.innerHTML = item.html;
+            if (item.level > 0 && parentItem) {
+                let sublist = parentItem.querySelector(':scope > ul.answer-sublist');
+                if (!sublist) {
+                    sublist = document.createElement('ul');
+                    sublist.className = 'answer-sublist';
+                    parentItem.appendChild(sublist);
+                }
+                sublist.appendChild(listItem);
+            } else {
+                list.appendChild(listItem);
+                parentItem = listItem;
+            }
+        });
+        element.insertBefore(list, children[index]);
+        for (let position = index; position < end; position++) children[position].remove();
+        index = end;
     }
+}
 
-    const mainHtml = (q.answer ? `<section><div class="q-section-label"><i class="bi bi-chat-square-text"></i> Answer</div>${answerHtml}</section>` : '')
-        + (q.description ? `<section><div class="q-section-label"><i class="bi bi-card-text"></i> Description</div><div class="q-desc">${esc(q.description)}</div></section>` : '');
-
-    const pointsHtml = q.points?.length
-        ? `<section><div class="q-section-label"><i class="bi bi-lightbulb"></i> Key points</div><div class="q-points">${q.points.map(p => `<div class="q-point">${esc(p)}</div>`).join('')}</div></section>`
-        : '';
-
-    const codeHtml = q.code_example
-        ? `<section><div class="q-section-label"><i class="bi bi-code-slash"></i> Example code</div>
-            <div class="code-block">
-                <div class="code-header"><span class="code-lang">${esc(LANG_LABEL[lang] || lang)}</span><button class="copy-btn" onclick="copyCode(this)"><i class="bi bi-clipboard"></i> Copy</button></div>
-                <pre><code class="language-${hlLang}">${esc(q.code_example)}</code></pre>
-            </div></section>`
-        : '';
-
-    const side = pointsHtml + codeHtml;
-    const reads = getReads(q.id), sets = getSets(q.id);
-
+function buildQuestionRow(question, number) {
+    const status = statusOf(question);
+    const meta = STATUS_META[status];
+    const difficulty = escapeHtml(question.difficulty);
+    const sets = getSets(question.id);
+    const reads = getReads(question.id);
+    const isSelected = String(question.id) === String(state.selectedQuestionId);
     return `
-    <article class="q-card q-enter st-${status}${isOpen ? ' open' : ''}" id="qcard-${q.id}" style="--i:${Math.min(num, 10)}">
-        <header class="q-head" onclick="toggleCard(${q.id})">
-            <span class="q-num">${num}</span>
-            <h3 class="q-text">${esc(q.question)}</h3>
-            <div class="q-badges">
-                <span class="mini-badge sets${sets ? '' : ' is-zero'}" data-b="${q.id}" title="Completed sets"><i class="bi bi-arrow-repeat"></i><b>${sets}</b></span>
-                <span class="mini-badge read${reads ? '' : ' is-zero'}" data-b="${q.id}" title="Times opened"><i class="bi bi-eye"></i><b>${reads}</b></span>
-                <button class="status-btn ${meta.cls}" data-qid="${q.id}" data-status="${status}" onclick="cycleStatus(${q.id},'${status}',event)" title="Mark as ${STATUS_CYCLE[status]}">
+    <article class="question-row status-${status}${isSelected ? ' is-selected' : ''}" id="question-row-${question.id}" role="button" tabindex="0" data-action="select-question" data-id="${question.id}">
+        <span class="question-row-number">${number}</span>
+        <div class="question-row-body">
+            <h3 class="question-row-title">${escapeHtml(question.question)}</h3>
+            <div class="question-row-meta">
+                <button type="button" class="status-chip is-${status}" data-action="cycle-status" data-status-button="${question.id}" data-id="${question.id}" data-status="${status}" title="Mark as ${STATUS_NEXT[status]}">
                     <i class="bi ${meta.icon}"></i><span>${meta.label}</span>
                 </button>
-                <span class="badge-diff ${diff}">${diff}</span>
-                <i class="bi bi-chevron-down q-toggle"></i>
+                <span class="difficulty-tag is-${difficulty}">${difficulty}</span>
+                <span class="readiness-pips" data-pips-for="${question.id}" title="${sets} completed ${sets === 1 ? 'set' : 'sets'} · ${describeSetLevel(sets)}">${buildPips(sets)}</span>
+                <span class="read-count${reads ? '' : ' is-zero'}" data-reads-for="${question.id}" title="Times opened"><i class="bi bi-eye"></i>${reads}</span>
             </div>
-        </header>
-        <div class="q-body">
-            <div class="tracker" id="trk-${q.id}">
-                <div class="tk"><i class="bi bi-stopwatch"></i><div><b data-t="session">0:00</b><small data-t="est"></small></div><div class="tk-bar"><span data-t="bar"></span></div></div>
-                <div class="tk"><i class="bi bi-hourglass-split"></i><div><b data-t="total">0:00</b><small>total time on this</small></div></div>
-                <div class="tk"><i class="bi bi-arrow-repeat"></i><div><b data-t="sets">0</b><small data-t="level"></small></div><button class="set-btn" onclick="completeSet(${q.id},event)">+1 Set</button></div>
-                <div class="tk"><i class="bi bi-eye"></i><div><b data-t="opens">0</b><small data-t="last"></small></div></div>
-            </div>
-            <div class="q-grid${side ? '' : ' no-side'}">
-                <div class="q-main">${mainHtml}</div>
-                ${side ? `<aside class="q-side">${side}</aside>` : ''}
-            </div>
-            <footer class="q-foot">
-                <button class="status-btn ${meta.cls} status-btn-foot" data-qid="${q.id}" data-status="${status}" onclick="cycleStatus(${q.id},'${status}',event)" title="Mark as ${STATUS_CYCLE[status]}">
-                    <i class="bi ${meta.icon}"></i><span>${meta.label}</span>
-                </button>
-                <button class="btn-sm" onclick="openEditQuestion(${q.id})"><i class="bi bi-pencil"></i> Edit</button>
-                <button class="btn-sm danger" onclick="deleteQuestion(${q.id})"><i class="bi bi-trash"></i> Delete</button>
-            </footer>
         </div>
     </article>`;
 }
 
-function toggleCard(id) {
-    const clicked = document.getElementById('qcard-' + id);
-    if (!clicked || !activeTopic) return;
-    const opening = !clicked.classList.contains('open');
-    document.querySelectorAll('.q-card.open').forEach(c => { if (c !== clicked) c.classList.remove('open'); });
+function renderQuestionList() {
+    const list = $('questionList');
+    const visible = getVisibleQuestions();
+    const topicId = state.activeTopic?.id;
 
-    if (!opening) {
-        clicked.classList.remove('open');
-        saveOpen(activeTopic.id, null);
-        stopTimer();
+    if (!visible.length) {
+        stopStudyTimer();
+        state.selectedQuestionId = null;
+        list.innerHTML = '<div class="empty-state"><i class="bi bi-inbox"></i><p>No questions match these filters. Try a different status or level.</p></div>';
+        showReaderEmpty();
         return;
     }
 
-    setPanelH();
-    clicked.classList.add('open');
-    clicked.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
-    saveOpen(activeTopic.id, id);
-    bumpRead(id);
-    startTimer(id);
+    const visibleIds = visible.map(question => String(question.id));
+    const candidates = [state.selectedQuestionId, getSavedOpenQuestion(topicId)];
+    let targetId = candidates.find(id => id && visibleIds.includes(String(id)));
+    if (!targetId && isSplitView()) targetId = visible[0].id;
 
-    const scrollEl = document.getElementById('qScroll');
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-        const target = Math.max(0, clicked.offsetTop - 12);
-        scrollEl.scrollTo({ top: target, behavior: 'smooth' });
-        ls.set(K.scroll + '_' + activeTopic.id, target);
-    }));
+    state.selectedQuestionId = targetId ? String(targetId) : null;
+    list.innerHTML = visible.map((question, index) => buildQuestionRow(question, index + 1)).join('');
+
+    if (targetId) {
+        selectQuestion(targetId, { countRead: false });
+    } else {
+        stopStudyTimer();
+        showReaderEmpty();
+        const savedScroll = storage.get(STORAGE_KEYS.listScroll + topicId);
+        if (savedScroll) list.scrollTop = parseInt(savedScroll);
+    }
 }
 
-function filterQuestions(f, el) {
-    activeFilter = f;
-    syncPills();
-    saveState();
-    stopTimer();
-    if (activeTopic && allQuestionsCache[activeTopic.id]) renderQuestions(allQuestionsCache[activeTopic.id], activeTopic.id);
-    else if (activeTopic) loadQuestions(activeTopic.id);
+function buildAnswerHtml(answer, language) {
+    if (!answer) return '';
+    if (isRichHtml(answer)) {
+        return `<div class="answer-content is-rich" data-language="${escapeHtml(language)}">${answer}</div>`;
+    }
+    const paragraphs = answer.split(/\n\n+/).filter(part => part.trim()).map(part => {
+        const text = part.trim();
+        if (text.startsWith('```') || /^(def |class |import |from |SELECT |INSERT |UPDATE |function |<\?php)/.test(text)) {
+            return `<pre class="answer-code">${escapeHtml(text.replace(/^```\w*\n?/, '').replace(/```$/, '').trim())}</pre>`;
+        }
+        return `<p class="answer-paragraph">${escapeHtml(text).replace(/\n/g, '<br>')}</p>`;
+    }).join('');
+    return `<div class="answer-content">${paragraphs}</div>`;
 }
 
-function filterByStatus(s, el) {
-    activeStatusFilter = s;
-    syncPills();
-    saveState();
-    stopTimer();
-    if (activeTopic && allQuestionsCache[activeTopic.id]) renderQuestions(allQuestionsCache[activeTopic.id], activeTopic.id);
-    else if (activeTopic) loadQuestions(activeTopic.id);
+function buildReader(question) {
+    const language = question.language || 'python';
+    const highlightLanguage = language === 'text' ? 'plaintext' : language;
+    const status = statusOf(question);
+    const meta = STATUS_META[status];
+    const difficulty = escapeHtml(question.difficulty);
+    const id = question.id;
+
+    const answerSection = question.answer ? `
+        <section class="reader-section answer-block${state.practiceMode ? ' is-concealed' : ''}" id="answerBlock">
+            <h4 class="section-label"><i class="bi bi-chat-square-text"></i>Answer</h4>
+            <div class="answer-frame">
+                ${buildAnswerHtml(question.answer, language)}
+                <button type="button" class="reveal-button" data-action="reveal-answer"><i class="bi bi-eye"></i>Reveal answer</button>
+            </div>
+        </section>` : '';
+
+    const descriptionSection = question.description ? `
+        <section class="reader-section">
+            <h4 class="section-label"><i class="bi bi-card-text"></i>Description</h4>
+            <div class="description-text">${escapeHtml(question.description)}</div>
+        </section>` : '';
+
+    const pointsSection = question.points?.length ? `
+        <section class="reader-section">
+            <h4 class="section-label"><i class="bi bi-lightbulb"></i>Key points</h4>
+            <div class="key-points">${question.points.map(point => `<div class="key-point"><span class="key-point-text">${escapeHtml(point)}</span></div>`).join('')}</div>
+        </section>` : '';
+
+    const codeSection = question.code_example ? `
+        <section class="reader-section">
+            <h4 class="section-label"><i class="bi bi-code-slash"></i>Example code</h4>
+            <div class="code-window">
+                <div class="code-window-bar">
+                    <span class="code-window-language">${escapeHtml(LANGUAGE_LABELS[language] || language)}</span>
+                    <button type="button" class="copy-button" data-action="copy-code"><i class="bi bi-clipboard"></i>Copy</button>
+                </div>
+                <pre><code class="language-${highlightLanguage}">${escapeHtml(question.code_example)}</code></pre>
+            </div>
+        </section>` : '';
+
+    return `
+    <div class="reader-toolbar">
+        <button type="button" class="button button-ghost button-small reader-back" data-action="close-reader"><i class="bi bi-chevron-left"></i>Questions</button>
+        <div class="reader-nav">
+            <button type="button" class="icon-button icon-button-small" data-action="previous-question" title="Previous question (K)" aria-label="Previous question"><i class="bi bi-chevron-up"></i></button>
+            <span class="reader-position" data-field="position"></span>
+            <button type="button" class="icon-button icon-button-small" data-action="next-question" title="Next question (J)" aria-label="Next question"><i class="bi bi-chevron-down"></i></button>
+        </div>
+        <button type="button" class="button button-ghost button-small practice-toggle${state.practiceMode ? ' is-active' : ''}" data-action="toggle-practice" aria-pressed="${state.practiceMode}" title="Hide the answer until you reveal it (P)">
+            <i class="bi bi-eye-slash"></i>Practice mode
+        </button>
+    </div>
+    <div class="reader-scroll" id="readerScroll">
+        <header class="reader-hero">
+            <div class="reader-tags">
+                <span class="difficulty-tag is-${difficulty}">${difficulty}</span>
+                <span class="reader-estimate"><i class="bi bi-hourglass-split"></i>${formatReadEstimate(question)} read</span>
+            </div>
+            <h2 class="reader-question">${escapeHtml(question.question)}</h2>
+            <div class="reader-actions">
+                <button type="button" class="status-chip is-${status} is-large" data-action="cycle-status" data-status-button="${id}" data-id="${id}" data-status="${status}" title="Mark as ${STATUS_NEXT[status]}">
+                    <i class="bi ${meta.icon}"></i><span>${meta.label}</span>
+                </button>
+                <button type="button" class="button button-ghost button-small" data-action="edit-question" data-id="${id}"><i class="bi bi-pencil"></i>Edit</button>
+                <button type="button" class="button button-danger button-small" data-action="delete-question" data-id="${id}"><i class="bi bi-trash"></i>Delete</button>
+            </div>
+        </header>
+
+        <div class="tracker" id="tracker-${id}">
+            <div class="tracker-tile tracker-tile-session">
+                <i class="bi bi-stopwatch"></i>
+                <div><b data-field="session">0:00</b><small data-field="estimate"></small></div>
+                <span class="tracker-bar"><span data-field="bar"></span></span>
+            </div>
+            <div class="tracker-tile tracker-tile-total">
+                <i class="bi bi-hourglass-split"></i>
+                <div><b data-field="total">0:00</b><small>total time on this</small></div>
+            </div>
+            <div class="tracker-tile tracker-tile-sets">
+                <i class="bi bi-arrow-repeat"></i>
+                <div><b data-field="sets">0</b><small data-field="level"></small></div>
+                <button type="button" class="set-button" data-action="complete-set" data-id="${id}">+1 set</button>
+            </div>
+            <div class="tracker-tile tracker-tile-opens">
+                <i class="bi bi-eye"></i>
+                <div><b data-field="opens">0</b><small data-field="last"></small></div>
+            </div>
+        </div>
+
+        <div class="reader-sections">
+            ${answerSection}
+            ${descriptionSection}
+            ${pointsSection}
+            ${codeSection}
+        </div>
+    </div>`;
 }
 
-function copyCode(btn) {
-    const code = btn.closest('.code-block').querySelector('code').innerText;
+function renderReader(question) {
+    const content = $('readerContent');
+    content.innerHTML = buildReader(question);
+    $('readerEmpty').hidden = true;
+    content.hidden = false;
+    content.classList.remove('is-entering');
+    void content.offsetWidth;
+    content.classList.add('is-entering');
+    content.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+    content.querySelectorAll('.answer-content.is-rich').forEach(normalizeRichAnswer);
+    highlightAnswerCode(content);
+    enhanceReadableSections(content);
+    paintReaderPosition();
+    paintTracker(question.id);
+}
+
+function paintReaderPosition() {
+    const label = document.querySelector('[data-field="position"]');
+    if (!label) return;
+    const ids = getVisibleQuestions().map(question => String(question.id));
+    const index = ids.indexOf(String(state.selectedQuestionId));
+    label.textContent = index === -1 ? '' : `${index + 1} of ${ids.length}`;
+}
+
+function selectQuestion(id, options = {}) {
+    const question = findQuestion(id);
+    if (!question || !state.activeTopic) return;
+    state.selectedQuestionId = String(id);
+    document.querySelectorAll('.question-row.is-selected').forEach(row => row.classList.remove('is-selected'));
+    const row = $('question-row-' + id);
+    if (row) {
+        row.classList.add('is-selected');
+        row.scrollIntoView({ block: 'nearest' });
+    }
+    saveOpenQuestion(state.activeTopic.id, id);
+    renderReader(question);
+    if (options.countRead) bumpRead(id);
+    startStudyTimer(id);
+    document.body.classList.add('reader-open');
+}
+
+function closeReader() {
+    stopStudyTimer();
+    document.body.classList.remove('reader-open');
+    if (state.activeTopic) saveOpenQuestion(state.activeTopic.id, null);
+    state.selectedQuestionId = null;
+    document.querySelectorAll('.question-row.is-selected').forEach(row => row.classList.remove('is-selected'));
+    setTimeout(() => {
+        if (!state.selectedQuestionId) showReaderEmpty();
+    }, 320);
+}
+
+function navigateQuestion(step) {
+    const ids = getVisibleQuestions().map(question => String(question.id));
+    if (!ids.length) return;
+    const current = ids.indexOf(String(state.selectedQuestionId));
+    const next = Math.min(ids.length - 1, Math.max(0, (current === -1 ? 0 : current + step)));
+    if (current !== -1 && next === current) return;
+    selectQuestion(ids[next], { countRead: true });
+}
+
+function togglePracticeMode() {
+    state.practiceMode = !state.practiceMode;
+    storage.set(STORAGE_KEYS.practiceMode, state.practiceMode ? '1' : '0');
+    document.querySelectorAll('[data-action="toggle-practice"]').forEach(button => {
+        button.classList.toggle('is-active', state.practiceMode);
+        button.setAttribute('aria-pressed', String(state.practiceMode));
+    });
+    const block = $('answerBlock');
+    if (block) block.classList.toggle('is-concealed', state.practiceMode);
+}
+
+function setStatusFilter(value) {
+    state.statusFilter = value;
+    afterFilterChange();
+}
+
+function setDifficultyFilter(value) {
+    state.difficultyFilter = value;
+    afterFilterChange();
+}
+
+function afterFilterChange() {
+    syncFilterButtons();
+    persistFilters();
+    stopStudyTimer();
+    if (state.activeTopic) loadQuestions(state.activeTopic.id);
+}
+
+function copyCode(button) {
+    const code = button.closest('.code-window').querySelector('code').innerText;
     navigator.clipboard.writeText(code).then(() => {
-        btn.innerHTML = '<i class="bi bi-check2"></i> Copied';
-        setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy', 2000);
+        button.innerHTML = '<i class="bi bi-check2"></i>Copied';
+        setTimeout(() => { button.innerHTML = '<i class="bi bi-clipboard"></i>Copy'; }, 2000);
     });
 }
 
-async function searchQuestions() {
-    const q = document.getElementById('searchInput').value.trim();
-    if (q.length < 2) {
-        if (activeTopic) loadQuestions(activeTopic.id);
+async function runSearch() {
+    const term = $('searchInput').value.trim();
+    if (term.length < 2) {
+        leaveSearch();
         return;
     }
-    stopTimer();
-    const scroll = document.getElementById('qScroll');
-    document.getElementById('welcomeScreen').style.display = 'none';
-    showTopicChrome(false);
-    scroll.style.display = 'block';
-    scroll.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
-    const r = await req('search', 'GET', null, { q });
-    if (!r.success) {
-        scroll.innerHTML = `<div class="empty-state"><i class="bi bi-exclamation-circle"></i><p>${esc(r.message)}</p></div>`;
+    stopStudyTimer();
+    state.isSearching = true;
+    state.selectedQuestionId = null;
+    showStage('desk');
+    showPaneHeader(false);
+    showReaderEmpty();
+    const list = $('questionList');
+    list.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+    const response = await apiRequest('search', 'GET', null, { q: term });
+    if (!state.isSearching) return;
+    if (!response.success) {
+        list.innerHTML = `<div class="empty-state"><i class="bi bi-exclamation-circle"></i><p>${escapeHtml(response.message)}</p></div>`;
         return;
     }
-    if (!r.data.length) {
-        scroll.innerHTML = `<div class="empty-state"><i class="bi bi-search"></i><p>No results for "<b>${esc(q)}</b>". Try a shorter keyword.</p></div>`;
+    if (!response.data.length) {
+        list.innerHTML = `<div class="empty-state"><i class="bi bi-search"></i><p>No results for <b>${escapeHtml(term)}</b>. Try a shorter keyword.</p></div>`;
         return;
     }
-    scroll.innerHTML = `<div class="search-count">${r.data.length} result(s) for "<b>${esc(q)}</b>"</div>` +
-        r.data.map(item => {
+    list.innerHTML = `<div class="search-count">${response.data.length} ${response.data.length === 1 ? 'result' : 'results'} for <b>${escapeHtml(term)}</b></div>` +
+        response.data.map(item => {
             const meta = STATUS_META[statusOf(item)];
-            return `<div class="search-result-card" onclick="jumpToTopic(${item.topic_id},${item.id})">
-                <div class="search-result-topic">${esc(item.topic_name)}</div>
-                <div class="search-result-q">${esc(item.question)}</div>
-                <span class="status-badge-inline ${meta.cls}"><i class="bi ${meta.icon}"></i> ${meta.label}</span>
-            </div>`;
+            return `
+            <article class="search-hit" role="button" tabindex="0" data-action="open-search-result" data-topic-id="${item.topic_id}" data-id="${item.id}">
+                <span class="search-hit-topic">${escapeHtml(item.topic_name)}</span>
+                <h3 class="search-hit-question">${escapeHtml(item.question)}</h3>
+                <span class="status-chip is-${statusOf(item)}"><i class="bi ${meta.icon}"></i><span>${meta.label}</span></span>
+            </article>`;
         }).join('');
 }
 
-function jumpToTopic(tid, qid) {
-    document.getElementById('searchInput').value = '';
-    const t = topics.find(x => x.id == tid);
-    if (!t) return;
-    if (qid) saveOpen(tid, qid);
-    activeFilter = 'all';
-    activeStatusFilter = 'all';
-    syncPills();
-    selectTopic(t, true);
+function leaveSearch() {
+    if (!state.isSearching && !$('studyDesk').hidden) return;
+    state.isSearching = false;
+    if (state.activeTopic) {
+        showStage('desk');
+        showPaneHeader(true);
+        renderQuestionList();
+    } else {
+        showStage('welcome');
+        showReaderEmpty();
+    }
+}
+
+function openSearchResult(topicId, questionId) {
+    const topic = state.topics.find(item => String(item.id) === String(topicId));
+    if (!topic) return;
+    if (questionId) saveOpenQuestion(topicId, questionId);
+    state.statusFilter = 'all';
+    state.difficultyFilter = 'all';
+    selectTopic(topic, true);
+}
+
+function toggleRail() {
+    const rail = $('topicRail');
+    const isOpen = rail.classList.toggle('is-open');
+    $('drawerBackdrop').classList.toggle('is-visible', isOpen);
+}
+
+function closeRail() {
+    $('topicRail').classList.remove('is-open');
+    $('drawerBackdrop').classList.remove('is-visible');
+}
+
+function focusSearch() {
+    $('searchInput').focus();
 }
 
 function openAddTopic() {
-    editingTopic = null;
-    document.getElementById('topicModalTitle').textContent = 'Add Topic';
-    document.getElementById('topicId').value = '';
-    document.getElementById('topicName').value = '';
-    document.getElementById('topicIcon').value = 'bi-folder';
-    document.getElementById('topicColor').value = '#0d9488';
-    document.getElementById('topicOrder').value = '0';
-    new bootstrap.Modal(document.getElementById('topicModal')).show();
+    $('topicModalTitle').textContent = 'Add topic';
+    $('topicIdField').value = '';
+    $('topicNameField').value = '';
+    $('topicIconField').value = 'bi-folder';
+    $('topicColorField').value = '#e92a7c';
+    $('topicOrderField').value = '0';
+    bootstrap.Modal.getOrCreateInstance($('topicModal')).show();
 }
 
-function openEditTopic(e, id) {
-    e.stopPropagation();
-    const t = topics.find(x => x.id == id);
-    if (!t) return;
-    editingTopic = t;
-    document.getElementById('topicModalTitle').textContent = 'Edit Topic';
-    document.getElementById('topicId').value = t.id;
-    document.getElementById('topicName').value = t.name;
-    document.getElementById('topicIcon').value = t.icon;
-    document.getElementById('topicColor').value = t.color;
-    document.getElementById('topicOrder').value = t.sort_order;
-    new bootstrap.Modal(document.getElementById('topicModal')).show();
+function openEditTopic(id) {
+    const topic = state.topics.find(item => String(item.id) === String(id));
+    if (!topic) return;
+    $('topicModalTitle').textContent = 'Edit topic';
+    $('topicIdField').value = topic.id;
+    $('topicNameField').value = topic.name;
+    $('topicIconField').value = topic.icon;
+    $('topicColorField').value = topic.color;
+    $('topicOrderField').value = topic.sort_order;
+    bootstrap.Modal.getOrCreateInstance($('topicModal')).show();
 }
 
 async function saveTopic() {
     const body = {
-        id: document.getElementById('topicId').value || null,
-        name: document.getElementById('topicName').value.trim(),
-        icon: document.getElementById('topicIcon').value.trim() || 'bi-folder',
-        color: document.getElementById('topicColor').value,
-        sort_order: document.getElementById('topicOrder').value,
+        id: $('topicIdField').value || null,
+        name: $('topicNameField').value.trim(),
+        icon: $('topicIconField').value.trim() || 'bi-folder',
+        color: $('topicColorField').value,
+        sort_order: $('topicOrderField').value,
     };
     if (!body.name) {
-        Swal.fire({ icon: 'warning', title: 'Name required', confirmButtonColor: '#0d9488' });
+        Swal.fire({ icon: 'warning', title: 'Topic name is required', confirmButtonColor: '#e92a7c' });
         return;
     }
-    const r = await req('save_topic', 'POST', body);
-    bootstrap.Modal.getInstance(document.getElementById('topicModal'))?.hide();
-    if (r.success) {
-        Swal.fire({ icon: 'success', title: r.message, timer: 1400, showConfirmButton: false });
-        setTimeout(() => location.reload(), 200);
+    const response = await apiRequest('save_topic', 'POST', body);
+    bootstrap.Modal.getInstance($('topicModal'))?.hide();
+    if (response.success) {
+        showToast('success', response.message);
+        await refreshWorkspace();
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#0d9488' });
+        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: '#e92a7c' });
     }
 }
 
-async function deleteTopic(e, id) {
-    e.stopPropagation();
+async function deleteTopic(id) {
     const result = await Swal.fire({
-        title: 'Delete topic?',
-        text: 'All questions in this topic will also be deleted.',
+        title: 'Delete this topic?',
+        text: 'Every question in this topic will be deleted too.',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'Yes, delete',
-        confirmButtonColor: '#ee5d54',
-        cancelButtonColor: '#adb5bd',
+        confirmButtonText: 'Delete topic',
+        confirmButtonColor: '#d6204f',
+        cancelButtonColor: '#847fa8',
     });
     if (!result.isConfirmed) return;
-    const r = await req('delete_topic', 'POST', { id });
-    if (r.success) {
-        Swal.fire({ icon: 'success', title: r.message, timer: 1400, showConfirmButton: false });
-        saveOpen(id, null);
-        if (activeTopic?.id == id) {
-            stopTimer();
-            activeTopic = null;
-            ls.del(K.topic);
-            showTopicChrome(false);
-            document.getElementById('qScroll').style.display = 'none';
-            document.getElementById('welcomeScreen').style.display = 'flex';
-            document.getElementById('topAddQBtn').style.display = 'none';
-            document.getElementById('mbnAddQ').style.display = 'none';
-        }
-        loadTopics();
-    } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#0d9488' });
+    const response = await apiRequest('delete_topic', 'POST', { id });
+    if (!response.success) {
+        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: '#e92a7c' });
+        return;
     }
+    showToast('success', response.message);
+    saveOpenQuestion(id, null);
+    delete state.questionCache[id];
+    if (String(state.activeTopic?.id) === String(id)) {
+        stopStudyTimer();
+        state.activeTopic = null;
+        state.selectedQuestionId = null;
+        storage.remove(STORAGE_KEYS.activeTopic);
+        showPaneHeader(false);
+        showReaderEmpty();
+        showStage('welcome');
+        toggleQuestionButtons(false);
+    }
+    await loadTopics(state.activeTopic?.id);
 }
 
-function initQuillEditor() {
-    if (quillAnswer) { quillAnswer.setContents([]); return; }
-    quillAnswer = new Quill('#quillAnswerEditor', {
+function initAnswerEditor() {
+    if (answerEditor) {
+        answerEditor.setContents([]);
+        return;
+    }
+    answerEditor = new Quill('#answerEditor', {
         theme: 'snow',
-        placeholder: 'Write a clear, concise answer…',
+        placeholder: 'Write a clear, concise answer',
         modules: {
             syntax: {
-                // Highlight code blocks using the Language dropdown (auto-detect for Plain Text)
-                highlight: text => highlightCode(text, document.getElementById('qLang').value)
+                highlight: text => highlightCode(text, $('questionLanguageField').value),
             },
             toolbar: [
                 [{ header: [1, 2, 3, false] }],
@@ -983,185 +1277,233 @@ function initQuillEditor() {
                 [{ list: 'ordered' }, { list: 'bullet' }],
                 ['blockquote', 'code-block'],
                 [{ indent: '-1' }, { indent: '+1' }],
-                ['clean']
-            ]
-        }
+                ['clean'],
+            ],
+        },
     });
 }
 
-function setQuillContent(html) {
-    if (!quillAnswer) return;
-    if (html && html.trim()) quillAnswer.root.innerHTML = html;
-    else quillAnswer.setContents([]);
-    setTimeout(refreshQuillHighlight, 0);
+function setAnswerEditorContent(html) {
+    if (!answerEditor) return;
+    if (html && html.trim()) answerEditor.root.innerHTML = html;
+    else answerEditor.setContents([]);
+    setTimeout(refreshAnswerEditorHighlight, 0);
 }
 
-function getQuillContent() {
-    if (!quillAnswer) return '';
-    const html = quillAnswer.root.innerHTML;
+function getAnswerEditorContent() {
+    if (!answerEditor) return '';
+    const html = answerEditor.root.innerHTML;
     if (html === '<p><br></p>' || !html.trim()) return '';
     return cleanAnswerHtml(html);
 }
 
-function initCodeEditor() {
-    const wrapper = document.getElementById('codeEditorWrapper');
-    wrapper.innerHTML = '';
-    codeEditor = CodeMirror(wrapper, {
-        value: document.getElementById('qCode').value || '',
-        mode: 'python',
+function initCodeEditor(initialValue) {
+    const shell = $('codeEditorShell');
+    shell.innerHTML = '';
+    codeEditor = CodeMirror(shell, {
+        value: initialValue || '',
+        mode: EDITOR_MODES[$('questionLanguageField').value] || null,
         theme: 'dracula',
         lineNumbers: true,
         indentUnit: 4,
         tabSize: 4,
         indentWithTabs: false,
         lineWrapping: false,
-        extraKeys: { Tab: cm => cm.replaceSelection('    ', 'end') }
+        extraKeys: { Tab: editor => editor.replaceSelection('    ', 'end') },
     });
 }
 
 function updateEditorMode() {
-    if (codeEditor) {
-        const modeMap = { python: 'python', javascript: 'javascript', php: 'php', sql: 'sql', bash: 'shell', java: 'text/x-java', text: null };
-        codeEditor.setOption('mode', modeMap[document.getElementById('qLang').value] || null);
-    }
-    refreshQuillHighlight();
+    if (codeEditor) codeEditor.setOption('mode', EDITOR_MODES[$('questionLanguageField').value] || null);
+    refreshAnswerEditorHighlight();
+}
+
+function showQuestionModal(onShown) {
+    const modalElement = $('questionModal');
+    modalElement.addEventListener('shown.bs.modal', onShown, { once: true });
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
 }
 
 function openAddQuestion() {
-    if (!activeTopic) return;
-    editingQuestion = null;
-    document.getElementById('qModalTitle').textContent = 'Add Question';
-    document.getElementById('qId').value = '';
-    document.getElementById('qTopicId').value = activeTopic.id;
-    document.getElementById('qQuestion').value = '';
-    document.getElementById('qAnswer').value = '';
-    document.getElementById('qPoints').value = '';
-    document.getElementById('qCode').value = '';
-    document.getElementById('qDifficulty').value = 'intermediate';
-    document.getElementById('qLang').value = 'python';
-    document.getElementById('qOrder').value = '0';
-    const modalEl = document.getElementById('qModal');
-    modalEl.addEventListener('shown.bs.modal', () => {
-        initQuillEditor();
-        setQuillContent('');
-        initCodeEditor();
-    }, { once: true });
-    new bootstrap.Modal(modalEl).show();
+    if (!state.activeTopic) return;
+    $('questionModalTitle').textContent = 'Add question';
+    $('questionIdField').value = '';
+    $('questionTopicField').value = state.activeTopic.id;
+    $('questionTextField').value = '';
+    $('questionPointsField').value = '';
+    $('questionDifficultyField').value = 'intermediate';
+    $('questionLanguageField').value = 'python';
+    $('questionOrderField').value = '0';
+    showQuestionModal(() => {
+        initAnswerEditor();
+        setAnswerEditorContent('');
+        initCodeEditor('');
+    });
 }
 
 async function openEditQuestion(id) {
-    const r = await req('get_question', 'GET', null, { id });
-    if (!r.success) return;
-    const q = r.data;
-    editingQuestion = q;
-    document.getElementById('qModalTitle').textContent = 'Edit Question';
-    document.getElementById('qId').value = q.id;
-    document.getElementById('qTopicId').value = q.topic_id;
-    document.getElementById('qQuestion').value = q.question;
-    document.getElementById('qAnswer').value = q.answer;
-    document.getElementById('qDifficulty').value = q.difficulty;
-    document.getElementById('qPoints').value = Array.isArray(q.points) ? q.points.join('\n') : '';
-    document.getElementById('qCode').value = q.code_example ?? '';
-    document.getElementById('qLang').value = q.language ?? 'python';
-    document.getElementById('qOrder').value = q.sort_order;
-    const modalEl = document.getElementById('qModal');
-    modalEl.addEventListener('shown.bs.modal', () => {
-        initQuillEditor();
-        setQuillContent(q.answer ?? '');
-        initCodeEditor();
-        if (codeEditor) codeEditor.setValue(q.code_example ?? '');
+    const response = await apiRequest('get_question', 'GET', null, { id });
+    if (!response.success) {
+        showToast('error', response.message || 'Could not load the question');
+        return;
+    }
+    const question = response.data;
+    $('questionModalTitle').textContent = 'Edit question';
+    $('questionIdField').value = question.id;
+    $('questionTopicField').value = question.topic_id;
+    $('questionTextField').value = question.question;
+    $('questionDifficultyField').value = question.difficulty;
+    $('questionPointsField').value = Array.isArray(question.points) ? question.points.join('\n') : '';
+    $('questionLanguageField').value = question.language ?? 'python';
+    $('questionOrderField').value = question.sort_order;
+    showQuestionModal(() => {
+        initAnswerEditor();
+        setAnswerEditorContent(question.answer ?? '');
+        initCodeEditor(question.code_example ?? '');
         updateEditorMode();
-    }, { once: true });
-    new bootstrap.Modal(modalEl).show();
+    });
 }
 
 async function saveQuestion() {
-    const codeVal = codeEditor ? codeEditor.getValue() : document.getElementById('qCode').value;
     const body = {
-        id: document.getElementById('qId').value || null,
-        topic_id: document.getElementById('qTopicId').value,
-        question: document.getElementById('qQuestion').value.trim(),
-        answer: getQuillContent(),
-        difficulty: document.getElementById('qDifficulty').value,
-        language: document.getElementById('qLang').value,
-        points: document.getElementById('qPoints').value.trim(),
-        code_example: codeVal.trim(),
-        sort_order: document.getElementById('qOrder').value,
+        id: $('questionIdField').value || null,
+        topic_id: $('questionTopicField').value,
+        question: $('questionTextField').value.trim(),
+        answer: getAnswerEditorContent(),
+        difficulty: $('questionDifficultyField').value,
+        language: $('questionLanguageField').value,
+        points: $('questionPointsField').value.trim(),
+        code_example: (codeEditor ? codeEditor.getValue() : '').trim(),
+        sort_order: $('questionOrderField').value,
     };
     if (!body.question || !body.answer) {
-        Swal.fire({ icon: 'warning', title: 'Question and answer are required', confirmButtonColor: '#0d9488' });
+        Swal.fire({ icon: 'warning', title: 'Question and answer are required', confirmButtonColor: '#e92a7c' });
         return;
     }
-    const r = await req('save_question', 'POST', body);
-    bootstrap.Modal.getInstance(document.getElementById('qModal'))?.hide();
-    if (r.success) {
-        if (body.id && activeTopic) saveOpen(activeTopic.id, body.id);
-        Swal.fire({ icon: 'success', title: r.message, timer: 1400, showConfirmButton: false });
-        setTimeout(() => location.reload(), 200);
+    const response = await apiRequest('save_question', 'POST', body);
+    bootstrap.Modal.getInstance($('questionModal'))?.hide();
+    if (response.success) {
+        if (body.id && state.activeTopic) saveOpenQuestion(state.activeTopic.id, body.id);
+        showToast('success', response.message);
+        await refreshWorkspace();
     } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#0d9488' });
+        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: '#e92a7c' });
     }
 }
 
 async function deleteQuestion(id) {
     const result = await Swal.fire({
-        title: 'Delete question?',
+        title: 'Delete this question?',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'Delete',
-        confirmButtonColor: '#ee5d54',
-        cancelButtonColor: '#adb5bd',
+        confirmButtonText: 'Delete question',
+        confirmButtonColor: '#d6204f',
+        cancelButtonColor: '#847fa8',
     });
     if (!result.isConfirmed) return;
-    const r = await req('delete_question', 'POST', { id });
-    if (r.success) {
-        Swal.fire({ icon: 'success', title: r.message, timer: 1400, showConfirmButton: false });
-        if (activeTopic && getOpen(activeTopic.id) === String(id)) { saveOpen(activeTopic.id, null); stopTimer(); }
-        loadTopics();
-        if (activeTopic) {
-            delete allQuestionsCache[activeTopic.id];
-            loadQuestions(activeTopic.id);
-        }
-    } else {
-        Swal.fire({ icon: 'error', title: r.message, confirmButtonColor: '#0d9488' });
-    }
-}
-
-let searchDebounce;
-document.getElementById('searchInput').addEventListener('input', () => {
-    clearTimeout(searchDebounce);
-    const v = document.getElementById('searchInput').value.trim();
-    if (!v) {
-        showTopicChrome(!!activeTopic);
-        if (activeTopic) loadQuestions(activeTopic.id);
-        else {
-            document.getElementById('qScroll').style.display = 'none';
-            document.getElementById('welcomeScreen').style.display = 'flex';
-        }
+    const response = await apiRequest('delete_question', 'POST', { id });
+    if (!response.success) {
+        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: '#e92a7c' });
         return;
     }
-    searchDebounce = setTimeout(searchQuestions, 380);
+    showToast('success', response.message);
+    if (state.activeTopic && getSavedOpenQuestion(state.activeTopic.id) === String(id)) saveOpenQuestion(state.activeTopic.id, null);
+    stopStudyTimer();
+    await refreshWorkspace();
+}
+
+const clickActions = {
+    'toggle-rail': () => toggleRail(),
+    'close-rail': () => closeRail(),
+    'focus-search': () => focusSearch(),
+    'toggle-theme': () => toggleTheme(),
+    'add-topic': () => openAddTopic(),
+    'add-question': () => openAddQuestion(),
+    'save-topic': () => saveTopic(),
+    'save-question': () => saveQuestion(),
+    'edit-topic': element => openEditTopic(element.dataset.id),
+    'delete-topic': element => deleteTopic(element.dataset.id),
+    'select-topic': element => {
+        const topic = state.topics.find(item => String(item.id) === String(element.dataset.id));
+        if (!topic) return;
+        selectTopic(topic);
+        closeRail();
+    },
+    'filter-status': element => setStatusFilter(element.dataset.value),
+    'filter-difficulty': element => setDifficultyFilter(element.dataset.value),
+    'select-question': element => {
+        if (String(element.dataset.id) === String(state.selectedQuestionId) && isSplitView()) return;
+        selectQuestion(element.dataset.id, { countRead: true });
+    },
+    'cycle-status': (element, event) => cycleStatus(element.dataset.id, element.dataset.status, event),
+    'complete-set': (element, event) => completeSet(element.dataset.id, event),
+    'edit-question': element => openEditQuestion(element.dataset.id),
+    'delete-question': element => deleteQuestion(element.dataset.id),
+    'close-reader': () => closeReader(),
+    'previous-question': () => navigateQuestion(-1),
+    'next-question': () => navigateQuestion(1),
+    'toggle-practice': () => togglePracticeMode(),
+    'reveal-answer': () => $('answerBlock')?.classList.remove('is-concealed'),
+    'copy-code': element => copyCode(element),
+    'open-search-result': element => openSearchResult(element.dataset.topicId, element.dataset.id),
+};
+
+document.addEventListener('click', event => {
+    const element = event.target.closest('[data-action]');
+    if (!element) return;
+    const handler = clickActions[element.dataset.action];
+    if (handler) handler(element, event);
 });
 
-document.addEventListener('keydown', e => {
-    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
-    const t = e.target;
-    if (t && (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable)) return;
-    if (t && t.closest && t.closest('.CodeMirror')) return;
-    e.preventDefault();
-    document.getElementById('searchInput').focus();
+document.addEventListener('change', event => {
+    if (event.target.matches('[data-action="change-language"]')) updateEditorMode();
 });
 
-document.getElementById('qScroll').addEventListener('scroll', e => {
-    if (activeTopic) ls.set(K.scroll + '_' + activeTopic.id, e.target.scrollTop);
+document.addEventListener('keydown', event => {
+    const target = event.target;
+    if (event.key === 'Enter' && target.matches && target.matches('[role="button"][data-action]')) {
+        event.preventDefault();
+        target.click();
+        return;
+    }
+    if (event.key === 'Escape') {
+        closeRail();
+        if (!isSplitView() && document.body.classList.contains('reader-open')) closeReader();
+        return;
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const isTyping = target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable || (target.closest && target.closest('.CodeMirror')));
+    if (isTyping || document.body.classList.contains('modal-open')) return;
+    const key = event.key.toLowerCase();
+    if (key === '/') {
+        event.preventDefault();
+        focusSearch();
+    } else if (key === 'j') {
+        navigateQuestion(1);
+    } else if (key === 'k') {
+        navigateQuestion(-1);
+    } else if (key === 'p' && state.selectedQuestionId) {
+        togglePracticeMode();
+    }
+});
+
+$('searchInput').addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    if (!$('searchInput').value.trim()) {
+        leaveSearch();
+        return;
+    }
+    searchTimeout = setTimeout(runSearch, 380);
+});
+
+$('questionList').addEventListener('scroll', event => {
+    if (state.activeTopic && !state.isSearching) storage.set(STORAGE_KEYS.listScroll + state.activeTopic.id, event.target.scrollTop);
 }, { passive: true });
-
-window.addEventListener('resize', setPanelH);
 
 document.addEventListener('DOMContentLoaded', () => {
     purgeLegacyLocalStatuses();
     applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light', false);
-    setPanelH();
-    paintStudy();
+    restoreFilters();
+    paintStudyMeter();
     loadTopics();
 });

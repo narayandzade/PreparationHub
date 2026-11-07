@@ -4,235 +4,274 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0d9488" id="metaThemeColor">
+<meta name="theme-color" content="#ffffff" id="themeColorMeta">
 <title>Interview Prep Hub</title>
 <script>
 (function () {
   try {
-    var t = localStorage.getItem('prep_theme');
-    if (!t) t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', t);
-  } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+    var theme = localStorage.getItem('prep_theme');
+    if (!theme) theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (error) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
-<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.quilljs.com/1.3.7/quill.snow.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
+<div class="drawer-backdrop" id="drawerBackdrop" data-action="close-rail"></div>
 
-<div class="topbar">
-  <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Toggle Topics">
-    <i class="bi bi-list"></i>
+<header class="topbar">
+  <button class="icon-button topbar-menu" type="button" data-action="toggle-rail" aria-label="Open topics">
+    <i class="bi bi-layout-sidebar-inset"></i>
   </button>
-  <div class="topbar-brand">
-    <div class="brand-icon"><i class="bi bi-mortarboard-fill"></i></div>
+
+  <a class="brand" href="./" aria-label="Interview Prep Hub home">
+    <span class="brand-mark"><i class="bi bi-highlighter"></i></span>
     <span class="brand-text">Interview Prep Hub</span>
+  </a>
+
+  <label class="search-box" for="searchInput">
+    <i class="bi bi-search search-box-icon"></i>
+    <input id="searchInput" type="text" placeholder="Search every question" autocomplete="off" aria-label="Search questions">
+    <kbd class="search-box-key">/</kbd>
+  </label>
+
+  <div class="study-meter" id="studyMeter" title="Your study streak and time studied today">
+    <span class="study-meter-item"><i class="bi bi-fire"></i><b id="streakCount">0</b><span class="study-meter-label">day streak</span></span>
+    <span class="study-meter-divider"></span>
+    <span class="study-meter-item"><i class="bi bi-clock-history"></i><b id="todayTime">0m</b><span class="study-meter-label">today</span></span>
   </div>
-  <div class="topbar-search">
-    <i class="bi bi-search si"></i>
-    <input id="searchInput" type="text" placeholder="Search questions…  ( press / )" autocomplete="off" aria-label="Search questions">
-  </div>
-  <div class="study-chip" id="studyChip" title="Your study streak and time studied today">
-    <i class="bi bi-fire"></i><b id="streakNum">0</b><span class="lbl">day streak</span>
-    <span class="sep"></span>
-    <i class="bi bi-clock-history"></i><b id="todayTime">0m</b><span class="lbl">today</span>
-  </div>
+
   <div class="topbar-actions">
-    <button class="btn-icon" id="themeToggle" onclick="toggleTheme()" title="Switch light / dark theme" aria-label="Switch theme"><i class="bi bi-moon-stars"></i></button>
-    <button class="btn-add" onclick="openAddQuestion()" id="topAddQBtn" style="display:none" title="Add Question">
-      <i class="bi bi-plus-lg"></i><span class="btn-label">Add question</span>
+    <button class="icon-button" id="themeToggle" type="button" data-action="toggle-theme" title="Switch light or dark theme" aria-label="Switch theme">
+      <i class="bi bi-moon-stars"></i>
     </button>
-    <button class="btn-icon" onclick="openAddTopic()" title="Add Topic" aria-label="Add Topic">
+    <button class="button button-primary" id="topbarAddQuestion" type="button" data-action="add-question" hidden>
+      <i class="bi bi-plus-lg"></i><span class="button-label">Add question</span>
+    </button>
+    <button class="icon-button topbar-add-topic" type="button" data-action="add-topic" title="Add topic" aria-label="Add topic">
       <i class="bi bi-folder-plus"></i>
     </button>
   </div>
-</div>
+</header>
 
-<div class="layout">
+<div class="workspace">
 
-  <div class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <span class="sidebar-title">Topics</span>
-      <div class="sidebar-actions">
-        <button class="btn-icon sm" onclick="openAddTopic()" title="New Topic" aria-label="New Topic"><i class="bi bi-plus"></i></button>
-      </div>
-    </div>
-    <div class="sidebar-list" id="topicList"></div>
-  </div>
-
-  <div class="main">
-    <div id="mainBar" class="main-bar" style="display:none">
-      <div id="mainHeader" class="main-header">
-        <div class="main-title-row">
-          <button class="back-btn" id="backBtn" onclick="toggleSidebar()" title="Topics" aria-label="Open Topics">
-            <i class="bi bi-chevron-left"></i>
-          </button>
-          <div class="main-title">
-            <span id="mainIcon" class="main-icon"></span>
-            <span id="mainTitle"></span>
-          </div>
-        </div>
-        <div class="topic-stats" id="topicStats" aria-live="polite"></div>
-      </div>
-
-      <div id="filterRow" class="filter-row">
-        <div class="filter-scroll-inner">
-          <button class="status-pill active" data-s="all" onclick="filterByStatus('all',this)"><i class="bi bi-circle"></i> All</button>
-          <button class="status-pill" data-s="new" onclick="filterByStatus('new',this)"><i class="bi bi-circle"></i> New</button>
-          <button class="status-pill sp-reading" data-s="reading" onclick="filterByStatus('reading',this)"><i class="bi bi-book-half"></i> Reading</button>
-          <button class="status-pill sp-done" data-s="done" onclick="filterByStatus('done',this)"><i class="bi bi-check-circle-fill"></i> Done</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="welcomeScreen" class="welcome">
-      <div class="welcome-icon"><i class="bi bi-journal-bookmark"></i></div>
-      <h2>Your next interview starts here</h2>
-      <p>Pick a topic, open a question, and let the timer track how long you study. Finish a read to add a set.</p>
-      <div class="welcome-tips">
-        <span class="tip"><i class="bi bi-circle"></i> New</span>
-        <i class="bi bi-arrow-right tip-arrow"></i>
-        <span class="tip tip-reading"><i class="bi bi-book-half"></i> Reading</span>
-        <i class="bi bi-arrow-right tip-arrow"></i>
-        <span class="tip tip-done"><i class="bi bi-check-circle-fill"></i> Done</span>
-      </div>
-      <p class="welcome-hint">Three completed sets on a question marks it interview ready.</p>
-      <button class="btn-add" onclick="toggleSidebar()" style="margin-top:6px">
-        <i class="bi bi-layout-sidebar"></i> Browse topics
+  <aside class="topic-rail" id="topicRail" aria-label="Topics">
+    <div class="topic-rail-header">
+      <span class="topic-rail-title">Topics</span>
+      <button class="icon-button icon-button-small" type="button" data-action="add-topic" title="New topic" aria-label="New topic">
+        <i class="bi bi-plus-lg"></i>
       </button>
     </div>
+    <div class="topic-list" id="topicList"></div>
+  </aside>
 
-    <div id="qScroll" class="q-scroll" style="display:none"></div>
-  </div>
+  <main class="stage">
+
+    <section class="welcome" id="welcomeScreen">
+      <div class="welcome-shapes" aria-hidden="true">
+        <span class="welcome-shape welcome-shape-ring"></span>
+        <span class="welcome-shape welcome-shape-block"></span>
+        <span class="welcome-shape welcome-shape-dot"></span>
+      </div>
+      <div class="welcome-inner">
+        <h1 class="welcome-title"><span class="welcome-marker">Say it out loud until it sticks.</span></h1>
+        <p class="welcome-text">Pick a topic, open a question and let the timer count your study time. Finish a read to add a set. Three sets and the question is interview ready.</p>
+
+        <div class="overview" aria-live="polite">
+          <div class="overview-track"><span class="overview-fill" id="overviewFill"></span></div>
+          <p class="overview-text" id="overviewText">Loading your progress</p>
+        </div>
+
+        <div class="status-flow" aria-label="Question status flow">
+          <span class="flow-step"><i class="bi bi-circle"></i>New</span>
+          <i class="bi bi-chevron-right flow-divider"></i>
+          <span class="flow-step flow-step-reading"><i class="bi bi-book-half"></i>Reading</span>
+          <i class="bi bi-chevron-right flow-divider"></i>
+          <span class="flow-step flow-step-done"><i class="bi bi-check-circle-fill"></i>Done</span>
+        </div>
+
+        <div class="welcome-actions">
+          <button class="button button-primary button-large" type="button" data-action="toggle-rail">
+            <i class="bi bi-journals"></i>Browse topics
+          </button>
+          <button class="button button-ghost button-large" type="button" data-action="add-topic">
+            <i class="bi bi-folder-plus"></i>New topic
+          </button>
+        </div>
+
+        <p class="welcome-keys">
+          <kbd>/</kbd> search
+          <kbd>J</kbd><kbd>K</kbd> next and previous question
+          <kbd>P</kbd> practice mode
+        </p>
+      </div>
+    </section>
+
+    <div class="study-desk" id="studyDesk" hidden>
+
+      <section class="question-pane" aria-label="Questions">
+        <header class="pane-header" id="paneHeader" hidden>
+          <div class="pane-title-row">
+            <span class="pane-topic-icon" id="paneTopicIcon"></span>
+            <h1 class="pane-topic-name" id="paneTopicName"></h1>
+          </div>
+          <div class="topic-stats" id="topicStats" aria-live="polite"></div>
+          <div class="filter-bar">
+            <div class="segmented" role="group" aria-label="Filter by status">
+              <button class="segment is-active" type="button" data-action="filter-status" data-value="all">All</button>
+              <button class="segment" type="button" data-action="filter-status" data-value="new"><i class="bi bi-circle"></i>New</button>
+              <button class="segment segment-reading" type="button" data-action="filter-status" data-value="reading"><i class="bi bi-book-half"></i>Reading</button>
+              <button class="segment segment-done" type="button" data-action="filter-status" data-value="done"><i class="bi bi-check-circle-fill"></i>Done</button>
+            </div>
+            <div class="segmented segmented-subtle" role="group" aria-label="Filter by difficulty">
+              <button class="segment is-active" type="button" data-action="filter-difficulty" data-value="all">Any level</button>
+              <button class="segment segment-beginner" type="button" data-action="filter-difficulty" data-value="beginner">Beginner</button>
+              <button class="segment segment-intermediate" type="button" data-action="filter-difficulty" data-value="intermediate">Intermediate</button>
+              <button class="segment segment-advanced" type="button" data-action="filter-difficulty" data-value="advanced">Advanced</button>
+            </div>
+          </div>
+        </header>
+        <div class="question-list" id="questionList"></div>
+      </section>
+
+      <section class="reader-pane" id="readerPane" aria-label="Question reader">
+        <div class="reader-empty" id="readerEmpty">
+          <div class="reader-empty-icon"><i class="bi bi-cursor-text"></i></div>
+          <h2>Choose a question to study</h2>
+          <p>Its answer, key points and example code open here. Use J and K to move through the list.</p>
+        </div>
+        <div class="reader-content" id="readerContent" hidden></div>
+      </section>
+
+    </div>
+  </main>
 </div>
 
-<nav class="mobile-bottom-nav" id="mobileBottomNav">
-  <div class="mobile-bottom-nav-inner">
-    <button class="mbn-btn" onclick="toggleSidebar()">
-      <i class="bi bi-journals"></i>
-      <span>Topics</span>
+<nav class="mobile-nav" id="mobileNav" aria-label="Quick actions">
+  <div class="mobile-nav-inner">
+    <button class="mobile-nav-button" type="button" data-action="toggle-rail">
+      <i class="bi bi-journals"></i><span>Topics</span>
     </button>
-    <button class="mbn-btn" id="mbnSearch" onclick="focusSearch()">
-      <i class="bi bi-search"></i>
-      <span>Search</span>
+    <button class="mobile-nav-button" type="button" data-action="focus-search">
+      <i class="bi bi-search"></i><span>Search</span>
     </button>
-    <button class="mbn-btn mbn-add" onclick="openAddQuestion()" id="mbnAddQ" style="display:none">
-      <i class="bi bi-plus-lg"></i>
-      <span>Add Q</span>
+    <button class="mobile-nav-button mobile-nav-add" id="navAddQuestion" type="button" data-action="add-question" hidden>
+      <i class="bi bi-plus-lg"></i><span>Add question</span>
     </button>
-    <button class="mbn-btn" onclick="openAddTopic()">
-      <i class="bi bi-folder-plus"></i>
-      <span>Add Topic</span>
+    <button class="mobile-nav-button" type="button" data-action="add-topic">
+      <i class="bi bi-folder-plus"></i><span>Add topic</span>
     </button>
   </div>
 </nav>
 
-<div class="modal fade" id="topicModal" tabindex="-1">
+<div class="modal fade" id="topicModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="topicModalTitle">Add Topic</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 class="modal-title" id="topicModalTitle">Add topic</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <input type="hidden" id="topicId">
+        <input type="hidden" id="topicIdField">
         <div class="mb-3">
-          <label class="form-label">Topic Name</label>
-          <input id="topicName" class="form-control" placeholder="e.g. Python Core" required>
+          <label class="form-label" for="topicNameField">Topic name</label>
+          <input id="topicNameField" class="form-control" placeholder="For example, Python core" required>
         </div>
         <div class="row g-3">
           <div class="col-6">
-            <label class="form-label">Bootstrap Icon Class</label>
-            <input id="topicIcon" class="form-control" placeholder="bi-folder" value="bi-folder">
+            <label class="form-label" for="topicIconField">Bootstrap icon class</label>
+            <input id="topicIconField" class="form-control" placeholder="bi-folder" value="bi-folder">
           </div>
           <div class="col-6">
-            <label class="form-label">Color</label>
-            <input id="topicColor" class="form-control" type="color" value="#0d9488" style="height:42px;padding:4px 8px">
+            <label class="form-label" for="topicColorField">Colour</label>
+            <input id="topicColorField" class="form-control form-control-color-field" type="color" value="#e92a7c">
           </div>
         </div>
         <div class="mt-3">
-          <label class="form-label">Sort Order</label>
-          <input id="topicOrder" class="form-control" type="number" value="0">
+          <label class="form-label" for="topicOrderField">Sort order</label>
+          <input id="topicOrderField" class="form-control" type="number" value="0">
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn-cancel" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn-primary-custom" onclick="saveTopic()">Save Topic</button>
+        <button class="button button-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+        <button class="button button-primary" type="button" data-action="save-topic">Save topic</button>
       </div>
     </div>
   </div>
 </div>
 
-<div class="modal fade" id="qModal" tabindex="-1">
+<div class="modal fade" id="questionModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-xl">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="qModalTitle">Add Question</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 class="modal-title" id="questionModalTitle">Add question</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <input type="hidden" id="qId">
-        <input type="hidden" id="qTopicId">
+        <input type="hidden" id="questionIdField">
+        <input type="hidden" id="questionTopicField">
         <div class="row g-3">
           <div class="col-12">
-            <label class="form-label">Question</label>
-            <textarea id="qQuestion" class="form-control" rows="1" placeholder="Enter the interview question…" required></textarea>
+            <label class="form-label" for="questionTextField">Question</label>
+            <textarea id="questionTextField" class="form-control" rows="1" placeholder="Enter the interview question" required></textarea>
           </div>
           <div class="col-12">
-            <label class="form-label">Answer <span class="label-hint">(code blocks are syntax highlighted using the Language selected below)</span></label>
-            <div id="quillAnswerWrapper">
-              <div id="quillAnswerEditor"></div>
+            <label class="form-label">Answer <span class="label-hint">Code blocks are highlighted using the language chosen below</span></label>
+            <div class="editor-shell" id="answerEditorShell">
+              <div id="answerEditor"></div>
             </div>
-            <textarea id="qAnswer" style="display:none"></textarea>
           </div>
           <div class="col-12">
-            <label class="form-label">Key Points <span class="label-hint">(one per line)</span></label>
-            <textarea id="qPoints" class="form-control" rows="5" placeholder="Point one&#10;Point two&#10;Point three"></textarea>
+            <label class="form-label" for="questionPointsField">Key points <span class="label-hint">One per line</span></label>
+            <textarea id="questionPointsField" class="form-control" rows="5" placeholder="Point one&#10;Point two&#10;Point three"></textarea>
           </div>
           <div class="col-12">
-            <label class="form-label">Example Code</label>
-            <div id="codeEditorWrapper" style="border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:#191c26;"></div>
-            <textarea id="qCode" style="display:none"></textarea>
+            <label class="form-label">Example code</label>
+            <div class="code-editor-shell" id="codeEditorShell"></div>
           </div>
           <div class="col-md-4">
-            <label class="form-label">Language</label>
-            <select id="qLang" class="form-select" onchange="updateEditorMode()">
+            <label class="form-label" for="questionLanguageField">Language</label>
+            <select id="questionLanguageField" class="form-select" data-action="change-language">
               <option value="python">Python</option>
               <option value="javascript">JavaScript</option>
               <option value="php">PHP</option>
               <option value="sql">SQL</option>
               <option value="bash">Bash</option>
               <option value="java">Java</option>
-              <option value="text">Plain Text</option>
+              <option value="text">Plain text</option>
             </select>
           </div>
           <div class="col-md-4">
-            <label class="form-label">Difficulty</label>
-            <select id="qDifficulty" class="form-select">
+            <label class="form-label" for="questionDifficultyField">Difficulty</label>
+            <select id="questionDifficultyField" class="form-select">
               <option value="beginner">Beginner</option>
               <option value="intermediate" selected>Intermediate</option>
               <option value="advanced">Advanced</option>
             </select>
           </div>
           <div class="col-md-4">
-            <label class="form-label">Sort Order</label>
-            <input id="qOrder" class="form-control" type="number" value="0">
+            <label class="form-label" for="questionOrderField">Sort order</label>
+            <input id="questionOrderField" class="form-control" type="number" value="0">
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn-cancel" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn-primary-custom" onclick="saveQuestion()">Save Question</button>
+        <button class="button button-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+        <button class="button button-primary" type="button" data-action="save-question">Save question</button>
       </div>
     </div>
   </div>
@@ -254,24 +293,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/shell/shell.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
 <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
-<script>
-function toggleSidebar() {
-  const s = document.getElementById('sidebar');
-  const b = document.getElementById('sidebarBackdrop');
-  const open = s.classList.toggle('open');
-  b.classList.toggle('visible', open);
-}
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sidebarBackdrop').classList.remove('visible');
-}
-function focusSearch() {
-  const inp = document.getElementById('searchInput');
-  inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  inp.focus();
-}
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
-</script>
 <script src="scripts.js"></script>
 </body>
 </html>
