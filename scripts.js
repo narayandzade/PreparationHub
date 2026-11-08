@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
     openQuestions: 'prep_open_map',
     theme: 'prep_theme',
     practiceMode: 'prep_practice_mode',
+    focusMode: 'prep_focus_mode',
     reads: 'prep_reads_',
     lastRead: 'prep_lastread_',
     sets: 'prep_sets_',
@@ -56,6 +57,7 @@ const state = {
     questionCache: {},
     isSearching: false,
     practiceMode: false,
+    focusMode: false,
 };
 
 const studyTimer = {
@@ -69,6 +71,7 @@ const studyTimer = {
 let codeEditor = null;
 let answerEditor = null;
 let searchTimeout = null;
+let deferredInstallPrompt = null;
 
 const $ = id => document.getElementById(id);
 
@@ -292,7 +295,7 @@ function startStudyTimer(questionId) {
     studyTimer.tickCount = 0;
     studyTimer.estimateSeconds = estimateReadSeconds(findQuestion(questionId));
     studyTimer.intervalId = setInterval(tickStudyTimer, 1000);
-    paintTracker(questionId);
+    paintStudyBar(questionId);
 }
 
 function stopStudyTimer() {
@@ -308,16 +311,16 @@ function tickStudyTimer() {
     storage.set(STORAGE_KEYS.time + studyTimer.questionId, String(getTime(studyTimer.questionId) + 1));
     const dayKey = STORAGE_KEYS.day + getDayKey();
     storage.set(dayKey, String((parseInt(storage.get(dayKey)) || 0) + 1));
-    paintTracker(studyTimer.questionId, true);
+    paintStudyBar(studyTimer.questionId, true);
     paintStudyMeter();
     if (studyTimer.tickCount % 10 === 0 && state.activeTopic) renderTopicStats(state.activeTopic.id);
 }
 
-function paintTracker(id, isLive) {
-    const tracker = $('tracker-' + id);
-    if (!tracker) return;
+function paintStudyBar(id, isLive) {
+    const bar = $('study-bar-' + id);
+    if (!bar) return;
     const setField = (name, value) => {
-        const element = tracker.querySelector(`[data-field="${name}"]`);
+        const element = bar.querySelector(`[data-field="${name}"]`);
         if (element && element.textContent !== String(value)) element.textContent = value;
     };
     const question = findQuestion(id);
@@ -331,11 +334,11 @@ function paintTracker(id, isLive) {
     setField('level', describeSetLevel(getSets(id)));
     setField('opens', getReads(id));
     setField('last', 'last read ' + formatRelativeDay(getLastRead(id)));
-    const bar = tracker.querySelector('[data-field="bar"]');
-    if (bar) {
+    const progress = bar.querySelector('[data-field="bar"]');
+    if (progress) {
         const percent = Math.min(100, Math.round((session / estimate) * 100));
-        bar.style.width = percent + '%';
-        bar.classList.toggle('is-full', percent >= 100);
+        progress.style.width = percent + '%';
+        progress.classList.toggle('is-full', percent >= 100);
     }
     if (!isLive) paintQuestionBadges(id);
 }
@@ -370,7 +373,7 @@ function paintQuestionBadges(id, shouldBump) {
 
 function completeSet(id, event) {
     storage.set(STORAGE_KEYS.sets + id, String(getSets(id) + 1));
-    paintTracker(id);
+    paintStudyBar(id);
     paintQuestionBadges(id, true);
     const question = findQuestion(id);
     if (question && statusOf(question) === 'new') setStatus(id, 'reading');
@@ -384,7 +387,7 @@ function completeSet(id, event) {
 function bumpRead(id) {
     storage.set(STORAGE_KEYS.reads + id, String(getReads(id) + 1));
     storage.set(STORAGE_KEYS.lastRead + id, String(Date.now()));
-    paintTracker(id);
+    paintStudyBar(id);
     if (state.activeTopic) renderTopicStats(state.activeTopic.id);
 }
 
@@ -644,6 +647,9 @@ function restoreFilters() {
     state.statusFilter = storage.get(STORAGE_KEYS.statusFilter) || 'all';
     state.difficultyFilter = storage.get(STORAGE_KEYS.difficultyFilter) || 'all';
     state.practiceMode = storage.get(STORAGE_KEYS.practiceMode) === '1';
+    state.focusMode = storage.get(STORAGE_KEYS.focusMode) === '1';
+    document.body.classList.toggle('is-focus-mode', state.focusMode);
+    document.documentElement.classList.remove('is-focus-preload');
     syncFilterButtons();
 }
 
@@ -920,7 +926,12 @@ function buildReader(question) {
     const status = statusOf(question);
     const meta = STATUS_META[status];
     const difficulty = escapeHtml(question.difficulty);
+    const topic = state.activeTopic;
     const id = question.id;
+
+    const visible = getVisibleQuestions();
+    const position = visible.findIndex(item => String(item.id) === String(id));
+    const upNext = position !== -1 ? visible[position + 1] : null;
 
     const answerSection = question.answer ? `
         <section class="reader-section answer-block${state.practiceMode ? ' is-concealed' : ''}" id="answerBlock">
@@ -955,6 +966,14 @@ function buildReader(question) {
             </div>
         </section>` : '';
 
+    const sideColumn = pointsSection + codeSection;
+
+    const upNextCard = upNext ? `
+        <button type="button" class="up-next" data-action="next-question">
+            <span class="up-next-text"><small>Up next</small><b>${escapeHtml(upNext.question)}</b></span>
+            <i class="bi bi-arrow-right"></i>
+        </button>` : '';
+
     return `
     <div class="reader-toolbar">
         <button type="button" class="button button-ghost button-small reader-back" data-action="close-reader"><i class="bi bi-chevron-left"></i>Questions</button>
@@ -963,54 +982,62 @@ function buildReader(question) {
             <span class="reader-position" data-field="position"></span>
             <button type="button" class="icon-button icon-button-small" data-action="next-question" title="Next question (J)" aria-label="Next question"><i class="bi bi-chevron-down"></i></button>
         </div>
-        <button type="button" class="button button-ghost button-small practice-toggle${state.practiceMode ? ' is-active' : ''}" data-action="toggle-practice" aria-pressed="${state.practiceMode}" title="Hide the answer until you reveal it (P)">
-            <i class="bi bi-eye-slash"></i>Practice mode
-        </button>
+        <div class="reader-toolbar-actions">
+            <button type="button" class="button button-ghost button-small mode-toggle practice-toggle${state.practiceMode ? ' is-active' : ''}" data-action="toggle-practice" aria-pressed="${state.practiceMode}" title="Hide the answer until you reveal it (P)">
+                <i class="bi bi-eye-slash"></i><span class="toolbar-label">Practice</span>
+            </button>
+            <button type="button" class="button button-ghost button-small mode-toggle focus-toggle${state.focusMode ? ' is-active' : ''}" data-action="toggle-focus" aria-pressed="${state.focusMode}" title="Hide the question list for a wider reading area (F)">
+                <i class="bi bi-arrows-fullscreen"></i><span class="toolbar-label">Focus</span>
+            </button>
+            <button type="button" class="icon-button icon-button-small" data-action="edit-question" data-id="${id}" title="Edit question" aria-label="Edit question"><i class="bi bi-pencil"></i></button>
+            <button type="button" class="icon-button icon-button-small icon-button-danger" data-action="delete-question" data-id="${id}" title="Delete question" aria-label="Delete question"><i class="bi bi-trash"></i></button>
+        </div>
     </div>
+
     <div class="reader-scroll" id="readerScroll">
         <header class="reader-hero">
             <div class="reader-tags">
+                <span class="reader-topic" style="--topic-color:${escapeHtml(topic?.color || '#e92a7c')}"><i class="bi ${escapeHtml(topic?.icon || 'bi-folder')}"></i>${escapeHtml(topic?.name || '')}</span>
                 <span class="difficulty-tag is-${difficulty}">${difficulty}</span>
                 <span class="reader-estimate"><i class="bi bi-hourglass-split"></i>${formatReadEstimate(question)} read</span>
             </div>
             <h2 class="reader-question">${escapeHtml(question.question)}</h2>
-            <div class="reader-actions">
-                <button type="button" class="status-chip is-${status} is-large" data-action="cycle-status" data-status-button="${id}" data-id="${id}" data-status="${status}" title="Mark as ${STATUS_NEXT[status]}">
-                    <i class="bi ${meta.icon}"></i><span>${meta.label}</span>
-                </button>
-                <button type="button" class="button button-ghost button-small" data-action="edit-question" data-id="${id}"><i class="bi bi-pencil"></i>Edit</button>
-                <button type="button" class="button button-danger button-small" data-action="delete-question" data-id="${id}"><i class="bi bi-trash"></i>Delete</button>
-            </div>
         </header>
 
-        <div class="tracker" id="tracker-${id}">
-            <div class="tracker-tile tracker-tile-session">
-                <i class="bi bi-stopwatch"></i>
-                <div><b data-field="session">0:00</b><small data-field="estimate"></small></div>
-                <span class="tracker-bar"><span data-field="bar"></span></span>
+        <div class="reader-columns${sideColumn ? '' : ' is-single'}">
+            <div class="reader-column reader-column-main">
+                ${answerSection}
+                ${descriptionSection}
             </div>
-            <div class="tracker-tile tracker-tile-total">
-                <i class="bi bi-hourglass-split"></i>
-                <div><b data-field="total">0:00</b><small>total time on this</small></div>
-            </div>
-            <div class="tracker-tile tracker-tile-sets">
-                <i class="bi bi-arrow-repeat"></i>
-                <div><b data-field="sets">0</b><small data-field="level"></small></div>
-                <button type="button" class="set-button" data-action="complete-set" data-id="${id}">+1 set</button>
-            </div>
-            <div class="tracker-tile tracker-tile-opens">
-                <i class="bi bi-eye"></i>
-                <div><b data-field="opens">0</b><small data-field="last"></small></div>
-            </div>
+            ${sideColumn ? `<div class="reader-column reader-column-side">${sideColumn}</div>` : ''}
         </div>
 
-        <div class="reader-sections">
-            ${answerSection}
-            ${descriptionSection}
-            ${pointsSection}
-            ${codeSection}
+        ${upNextCard}
+    </div>
+
+    <footer class="study-bar" id="study-bar-${id}">
+        <div class="study-stat study-stat-timer">
+            <i class="bi bi-stopwatch"></i>
+            <div><b data-field="session">0:00</b><small data-field="estimate"></small></div>
+            <span class="study-bar-progress"><span data-field="bar"></span></span>
         </div>
-    </div>`;
+        <div class="study-stat study-stat-total">
+            <i class="bi bi-hourglass-split"></i>
+            <div><b data-field="total">0:00</b><small>total time</small></div>
+        </div>
+        <div class="study-stat study-stat-sets">
+            <i class="bi bi-arrow-repeat"></i>
+            <div><b data-field="sets">0</b><small data-field="level"></small></div>
+            <button type="button" class="set-button" data-action="complete-set" data-id="${id}">+1 set</button>
+        </div>
+        <div class="study-stat study-stat-opens">
+            <i class="bi bi-eye"></i>
+            <div><b data-field="opens">0</b><small data-field="last"></small></div>
+        </div>
+        <button type="button" class="status-chip is-${status} is-large study-status" data-action="cycle-status" data-status-button="${id}" data-id="${id}" data-status="${status}" title="Mark as ${STATUS_NEXT[status]}">
+            <i class="bi ${meta.icon}"></i><span>${meta.label}</span>
+        </button>
+    </footer>`;
 }
 
 function renderReader(question) {
@@ -1026,7 +1053,7 @@ function renderReader(question) {
     highlightAnswerCode(content);
     enhanceReadableSections(content);
     paintReaderPosition();
-    paintTracker(question.id);
+    paintStudyBar(question.id);
 }
 
 function paintReaderPosition() {
@@ -1083,6 +1110,25 @@ function togglePracticeMode() {
     });
     const block = $('answerBlock');
     if (block) block.classList.toggle('is-concealed', state.practiceMode);
+}
+
+function toggleFocusMode() {
+    state.focusMode = !state.focusMode;
+    storage.set(STORAGE_KEYS.focusMode, state.focusMode ? '1' : '0');
+    document.body.classList.toggle('is-focus-mode', state.focusMode);
+    closeRail();
+    document.querySelectorAll('[data-action="toggle-focus"]').forEach(button => {
+        button.classList.toggle('is-active', state.focusMode);
+        button.setAttribute('aria-pressed', String(state.focusMode));
+    });
+    if (state.focusMode && !state.selectedQuestionId && isSplitView() && state.activeTopic) {
+        const first = getVisibleQuestions()[0];
+        if (first) selectQuestion(first.id, { countRead: false });
+    }
+    if (!state.focusMode && state.selectedQuestionId) {
+        const row = $('question-row-' + state.selectedQuestionId);
+        if (row) requestAnimationFrame(() => row.scrollIntoView({ block: 'center' }));
+    }
 }
 
 function setStatusFilter(value) {
@@ -1412,11 +1458,54 @@ async function deleteQuestion(id) {
     await refreshWorkspace();
 }
 
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const isIosDevice = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+function updateInstallButton() {
+    const button = $('installButton');
+    if (!button) return;
+    button.hidden = isStandalone() || !(deferredInstallPrompt || isIosDevice());
+}
+
+async function installApp() {
+    if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice;
+        deferredInstallPrompt = null;
+        updateInstallButton();
+        return;
+    }
+    Swal.fire({
+        icon: 'info',
+        title: 'Install on iPhone or iPad',
+        html: 'Open this page in Safari, tap the <b>Share</b> button, then choose <b>Add to Home Screen</b>.',
+        confirmButtonColor: '#e92a7c',
+    });
+}
+
+function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+
+window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    updateInstallButton();
+});
+
+window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    updateInstallButton();
+    showToast('success', 'App installed');
+});
+
 const clickActions = {
     'toggle-rail': () => toggleRail(),
     'close-rail': () => closeRail(),
     'focus-search': () => focusSearch(),
     'toggle-theme': () => toggleTheme(),
+    'install-app': () => installApp(),
     'add-topic': () => openAddTopic(),
     'add-question': () => openAddQuestion(),
     'save-topic': () => saveTopic(),
@@ -1443,6 +1532,7 @@ const clickActions = {
     'previous-question': () => navigateQuestion(-1),
     'next-question': () => navigateQuestion(1),
     'toggle-practice': () => togglePracticeMode(),
+    'toggle-focus': () => toggleFocusMode(),
     'reveal-answer': () => $('answerBlock')?.classList.remove('is-concealed'),
     'copy-code': element => copyCode(element),
     'open-search-result': element => openSearchResult(element.dataset.topicId, element.dataset.id),
@@ -1484,6 +1574,8 @@ document.addEventListener('keydown', event => {
         navigateQuestion(-1);
     } else if (key === 'p' && state.selectedQuestionId) {
         togglePracticeMode();
+    } else if (key === 'f' && state.activeTopic && isSplitView()) {
+        toggleFocusMode();
     }
 });
 
@@ -1505,5 +1597,7 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light', false);
     restoreFilters();
     paintStudyMeter();
+    updateInstallButton();
+    registerServiceWorker();
     loadTopics();
 });

@@ -6,12 +6,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff" id="themeColorMeta">
 <title>Interview Prep Hub</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Prep Hub">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script>
 (function () {
   try {
     var theme = localStorage.getItem('prep_theme');
     if (!theme) theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', theme);
+    if (localStorage.getItem('prep_focus_mode') === '1') document.documentElement.classList.add('is-focus-preload');
   } catch (error) {
     document.documentElement.setAttribute('data-theme', 'light');
   }
@@ -55,6 +63,9 @@
   </div>
 
   <div class="topbar-actions">
+    <button class="button button-ghost install-button" id="installButton" type="button" data-action="install-app" title="Install this app on your device" hidden>
+      <i class="bi bi-download"></i><span class="button-label">Install app</span>
+    </button>
     <button class="icon-button" id="themeToggle" type="button" data-action="toggle-theme" title="Switch light or dark theme" aria-label="Switch theme">
       <i class="bi bi-moon-stars"></i>
     </button>
@@ -115,8 +126,9 @@
 
         <p class="welcome-keys">
           <kbd>/</kbd> search
-          <kbd>J</kbd><kbd>K</kbd> next and previous question
+          <kbd>J</kbd><kbd>K</kbd> next and previous
           <kbd>P</kbd> practice mode
+          <kbd>F</kbd> focus mode
         </p>
       </div>
     </section>
@@ -152,7 +164,7 @@
         <div class="reader-empty" id="readerEmpty">
           <div class="reader-empty-icon"><i class="bi bi-cursor-text"></i></div>
           <h2>Choose a question to study</h2>
-          <p>Its answer, key points and example code open here. Use J and K to move through the list.</p>
+          <p>The answer, key points and example code open here with plenty of room. Use J and K to move through the list.</p>
         </div>
         <div class="reader-content" id="readerContent" hidden></div>
       </section>
