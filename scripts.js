@@ -1001,7 +1001,7 @@ function buildReader(question) {
                 <span class="difficulty-tag is-${difficulty}">${difficulty}</span>
                 <span class="reader-estimate"><i class="bi bi-hourglass-split"></i>${formatReadEstimate(question)} read</span>
             </div>
-            <h2 class="reader-question">${escapeHtml(question.question)}</h2>
+            <h6 class="reader-question" style="font-size: 30px;">${escapeHtml(question.question)}</h6>
         </header>
 
         <div class="reader-columns${sideColumn ? '' : ' is-single'}">
