@@ -20,6 +20,7 @@
     if (!theme) theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', theme);
     if (localStorage.getItem('prep_focus_mode') === '1') document.documentElement.classList.add('is-focus-preload');
+    if (localStorage.getItem('prep_rail_collapsed') === '1') document.documentElement.classList.add('is-rail-preload');
   } catch (error) {
     document.documentElement.setAttribute('data-theme', 'light');
   }
@@ -27,7 +28,7 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400..600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
@@ -46,7 +47,7 @@
   </button>
 
   <a class="brand" href="./" aria-label="Interview Prep Hub home">
-    <span class="brand-mark"><i class="bi bi-highlighter"></i></span>
+    <span class="brand-mark"><i class="bi bi-mortarboard-fill"></i></span>
     <span class="brand-text">Interview Prep Hub</span>
   </a>
 
@@ -83,9 +84,14 @@
   <aside class="topic-rail" id="topicRail" aria-label="Topics">
     <div class="topic-rail-header">
       <span class="topic-rail-title">Topics</span>
-      <button class="icon-button icon-button-small" type="button" data-action="add-topic" title="New topic" aria-label="New topic">
-        <i class="bi bi-plus-lg"></i>
-      </button>
+      <div class="topic-rail-actions">
+        <button class="icon-button icon-button-small rail-add" type="button" data-action="add-topic" title="New topic" aria-label="New topic">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+        <button class="icon-button icon-button-small rail-collapse" type="button" data-action="toggle-rail-collapse" title="Collapse topics (B)" aria-label="Collapse topics">
+          <i class="bi bi-chevron-bar-left"></i>
+        </button>
+      </div>
     </div>
     <div class="topic-list" id="topicList"></div>
   </aside>
@@ -129,6 +135,7 @@
           <kbd>J</kbd><kbd>K</kbd> next and previous
           <kbd>P</kbd> practice mode
           <kbd>F</kbd> focus mode
+          <kbd>B</kbd> collapse topics
         </p>
       </div>
     </section>
@@ -150,7 +157,7 @@
               <button class="segment segment-done" type="button" data-action="filter-status" data-value="done"><i class="bi bi-check-circle-fill"></i>Done</button>
             </div>
             <div class="segmented segmented-subtle" role="group" aria-label="Filter by difficulty">
-              <button class="segment is-active" type="button" data-action="filter-difficulty" data-value="all">Any level</button>
+              <button class="segment is-active" type="button" data-action="filter-difficulty" data-value="all" title="Any level">Any</button>
               <button class="segment segment-beginner" type="button" data-action="filter-difficulty" data-value="beginner">Beginner</button>
               <button class="segment segment-intermediate" type="button" data-action="filter-difficulty" data-value="intermediate">Intermediate</button>
               <button class="segment segment-advanced" type="button" data-action="filter-difficulty" data-value="advanced">Advanced</button>
@@ -210,7 +217,7 @@
           </div>
           <div class="col-6">
             <label class="form-label" for="topicColorField">Colour</label>
-            <input id="topicColorField" class="form-control form-control-color-field" type="color" value="#e92a7c">
+            <input id="topicColorField" class="form-control form-control-color-field" type="color" value="#4f46e5">
           </div>
         </div>
         <div class="mt-3">

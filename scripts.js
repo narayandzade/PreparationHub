@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
     theme: 'prep_theme',
     practiceMode: 'prep_practice_mode',
     focusMode: 'prep_focus_mode',
+    railCollapsed: 'prep_rail_collapsed',
     reads: 'prep_reads_',
     lastRead: 'prep_lastread_',
     sets: 'prep_sets_',
@@ -46,7 +47,8 @@ const EDITOR_MODES = {
 };
 
 const HIGHLIGHT_LANGUAGES = ['python', 'javascript', 'php', 'sql', 'bash', 'java', 'xml', 'css', 'json'];
-const CONFETTI_COLORS = ['#e92a7c', '#c9f23a', '#0fb5d9', '#ffd21f', '#6a4cff', '#14b284'];
+const CONFETTI_COLORS = ['#4f46e5', '#c9f23a', '#0fb5d9', '#ffd21f', '#8b5cf6', '#14b284'];
+const ACCENT_BUTTON_COLOR = '#4f46e5';
 
 const state = {
     topics: [],
@@ -58,6 +60,7 @@ const state = {
     isSearching: false,
     practiceMode: false,
     focusMode: false,
+    railCollapsed: false,
 };
 
 const studyTimer = {
@@ -123,6 +126,10 @@ function isSplitView() {
     return window.matchMedia('(min-width: 900px)').matches;
 }
 
+function isWideScreen() {
+    return window.matchMedia('(min-width: 1200px)').matches;
+}
+
 function highlightCode(text, language) {
     if (!window.hljs) return escapeHtml(text);
     try {
@@ -181,7 +188,7 @@ function applyTheme(theme, animate) {
     const toggle = $('themeToggle');
     if (toggle) toggle.innerHTML = theme === 'dark' ? '<i class="bi bi-sun"></i>' : '<i class="bi bi-moon-stars"></i>';
     const meta = $('themeColorMeta');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#171236' : '#ffffff');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#12152e' : '#ffffff');
 }
 
 function toggleTheme() {
@@ -430,8 +437,9 @@ function paintStatusControls(id, status) {
     const meta = STATUS_META[status] || STATUS_META.new;
     document.querySelectorAll(`[data-status-button="${id}"]`).forEach(button => {
         const isLarge = button.classList.contains('is-large');
+        const isStudy = button.classList.contains('study-status');
         button.dataset.status = status;
-        button.className = `status-chip is-${status}${isLarge ? ' is-large' : ''}`;
+        button.className = `status-chip is-${status}${isLarge ? ' is-large' : ''}${isStudy ? ' study-status' : ''}`;
         button.innerHTML = `<i class="bi ${meta.icon}"></i><span>${meta.label}</span>`;
         button.title = `Mark as ${STATUS_NEXT[status]}`;
     });
@@ -549,10 +557,10 @@ function renderTopicStats(topicId) {
                 <span class="ring-label"></span>
             </div>
             <div class="stat-chips">
-                <span class="stat-chip stat-chip-done" title="Questions marked done"><i class="bi bi-check-circle-fill"></i><b data-metric="done"></b> done</span>
-                <span class="stat-chip stat-chip-reading"><i class="bi bi-book-half"></i><b data-metric="reading"></b> reading</span>
-                <span class="stat-chip"><i class="bi bi-circle"></i><b data-metric="new"></b> new</span>
-                <span class="stat-chip stat-chip-sets" title="Completed revision sets"><i class="bi bi-arrow-repeat"></i><b data-metric="sets"></b> sets</span>
+                <span class="stat-chip stat-chip-done" title="Questions marked done"><i class="bi bi-check-circle-fill"></i><b data-metric="done"></b></span>
+                <span class="stat-chip stat-chip-reading" title="Questions being read"><i class="bi bi-book-half"></i><b data-metric="reading"></b></span>
+                <span class="stat-chip stat-chip-new" title="New questions"><i class="bi bi-circle"></i><b data-metric="new"></b></span>
+                <span class="stat-chip stat-chip-sets" title="Completed revision sets"><i class="bi bi-arrow-repeat"></i><b data-metric="sets"></b></span>
                 <span class="stat-chip stat-chip-time" title="Total study time in this topic"><i class="bi bi-stopwatch"></i><b data-metric="time"></b></span>
             </div>`;
         box.querySelector('.ring-value').getBoundingClientRect();
@@ -643,13 +651,31 @@ function persistFilters() {
     storage.set(STORAGE_KEYS.difficultyFilter, state.difficultyFilter);
 }
 
+function applyRailCollapsed() {
+    document.body.classList.toggle('is-rail-collapsed', state.railCollapsed);
+    document.documentElement.classList.remove('is-rail-preload');
+    const button = document.querySelector('[data-action="toggle-rail-collapse"]');
+    if (!button) return;
+    const label = state.railCollapsed ? 'Expand topics (B)' : 'Collapse topics (B)';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+}
+
+function toggleRailCollapse() {
+    state.railCollapsed = !state.railCollapsed;
+    storage.set(STORAGE_KEYS.railCollapsed, state.railCollapsed ? '1' : '0');
+    applyRailCollapsed();
+}
+
 function restoreFilters() {
     state.statusFilter = storage.get(STORAGE_KEYS.statusFilter) || 'all';
     state.difficultyFilter = storage.get(STORAGE_KEYS.difficultyFilter) || 'all';
     state.practiceMode = storage.get(STORAGE_KEYS.practiceMode) === '1';
     state.focusMode = storage.get(STORAGE_KEYS.focusMode) === '1';
+    state.railCollapsed = storage.get(STORAGE_KEYS.railCollapsed) === '1';
     document.body.classList.toggle('is-focus-mode', state.focusMode);
     document.documentElement.classList.remove('is-focus-preload');
+    applyRailCollapsed();
     syncFilterButtons();
 }
 
@@ -675,7 +701,7 @@ function renderTopicList() {
         const percent = total ? Math.round((done / total) * 100) : 0;
         const isActive = String(state.activeTopic?.id) === String(topic.id);
         return `
-        <div class="topic-item${isActive ? ' is-active' : ''}" role="button" tabindex="0" data-action="select-topic" data-id="${topic.id}" style="--topic-color:${escapeHtml(topic.color)}">
+        <div class="topic-item${isActive ? ' is-active' : ''}" role="button" tabindex="0" data-action="select-topic" data-id="${topic.id}" title="${escapeHtml(topic.name)} · ${total} questions" style="--topic-color:${escapeHtml(topic.color)}">
             <span class="topic-badge"><i class="bi ${escapeHtml(topic.icon)}"></i></span>
             <span class="topic-info">
                 <span class="topic-name">${escapeHtml(topic.name)}</span>
@@ -860,16 +886,14 @@ function buildQuestionRow(question, number) {
     return `
     <article class="question-row status-${status}${isSelected ? ' is-selected' : ''}" id="question-row-${question.id}" role="button" tabindex="0" data-action="select-question" data-id="${question.id}">
         <span class="question-row-number">${number}</span>
-        <div class="question-row-body">
-            <h3 class="question-row-title">${escapeHtml(question.question)}</h3>
-            <div class="question-row-meta">
-                <button type="button" class="status-chip is-${status}" data-action="cycle-status" data-status-button="${question.id}" data-id="${question.id}" data-status="${status}" title="Mark as ${STATUS_NEXT[status]}">
-                    <i class="bi ${meta.icon}"></i><span>${meta.label}</span>
-                </button>
-                <span class="difficulty-tag is-${difficulty}">${difficulty}</span>
-                <span class="readiness-pips" data-pips-for="${question.id}" title="${sets} completed ${sets === 1 ? 'set' : 'sets'} · ${describeSetLevel(sets)}">${buildPips(sets)}</span>
-                <span class="read-count${reads ? '' : ' is-zero'}" data-reads-for="${question.id}" title="Times opened"><i class="bi bi-eye"></i>${reads}</span>
-            </div>
+        <h3 class="question-row-title">${escapeHtml(question.question)}</h3>
+        <div class="question-row-meta">
+            <button type="button" class="status-chip is-${status}" data-action="cycle-status" data-status-button="${question.id}" data-id="${question.id}" data-status="${status}" title="Mark as ${STATUS_NEXT[status]}">
+                <i class="bi ${meta.icon}"></i><span>${meta.label}</span>
+            </button>
+            <span class="difficulty-tag is-${difficulty}">${difficulty}</span>
+            <span class="readiness-pips" data-pips-for="${question.id}" title="${sets} completed ${sets === 1 ? 'set' : 'sets'} · ${describeSetLevel(sets)}">${buildPips(sets)}</span>
+            <span class="read-count${reads ? '' : ' is-zero'}" data-reads-for="${question.id}" title="Times opened"><i class="bi bi-eye"></i>${reads}</span>
         </div>
     </article>`;
 }
@@ -997,11 +1021,11 @@ function buildReader(question) {
     <div class="reader-scroll" id="readerScroll">
         <header class="reader-hero">
             <div class="reader-tags">
-                <span class="reader-topic" style="--topic-color:${escapeHtml(topic?.color || '#e92a7c')}"><i class="bi ${escapeHtml(topic?.icon || 'bi-folder')}"></i>${escapeHtml(topic?.name || '')}</span>
+                <span class="reader-topic" style="--topic-color:${escapeHtml(topic?.color || '#4f46e5')}"><i class="bi ${escapeHtml(topic?.icon || 'bi-folder')}"></i>${escapeHtml(topic?.name || '')}</span>
                 <span class="difficulty-tag is-${difficulty}">${difficulty}</span>
                 <span class="reader-estimate"><i class="bi bi-hourglass-split"></i>${formatReadEstimate(question)} read</span>
             </div>
-            <h6 class="reader-question" style="font-size: 30px;">${escapeHtml(question.question)}</h6>
+            <h1 class="reader-question">${escapeHtml(question.question)}</h1>
         </header>
 
         <div class="reader-columns${sideColumn ? '' : ' is-single'}">
@@ -1234,7 +1258,7 @@ function openAddTopic() {
     $('topicIdField').value = '';
     $('topicNameField').value = '';
     $('topicIconField').value = 'bi-folder';
-    $('topicColorField').value = '#e92a7c';
+    $('topicColorField').value = '#4f46e5';
     $('topicOrderField').value = '0';
     bootstrap.Modal.getOrCreateInstance($('topicModal')).show();
 }
@@ -1260,7 +1284,7 @@ async function saveTopic() {
         sort_order: $('topicOrderField').value,
     };
     if (!body.name) {
-        Swal.fire({ icon: 'warning', title: 'Topic name is required', confirmButtonColor: '#e92a7c' });
+        Swal.fire({ icon: 'warning', title: 'Topic name is required', confirmButtonColor: ACCENT_BUTTON_COLOR });
         return;
     }
     const response = await apiRequest('save_topic', 'POST', body);
@@ -1269,7 +1293,7 @@ async function saveTopic() {
         showToast('success', response.message);
         await refreshWorkspace();
     } else {
-        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: '#e92a7c' });
+        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: ACCENT_BUTTON_COLOR });
     }
 }
 
@@ -1286,7 +1310,7 @@ async function deleteTopic(id) {
     if (!result.isConfirmed) return;
     const response = await apiRequest('delete_topic', 'POST', { id });
     if (!response.success) {
-        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: '#e92a7c' });
+        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: ACCENT_BUTTON_COLOR });
         return;
     }
     showToast('success', response.message);
@@ -1423,7 +1447,7 @@ async function saveQuestion() {
         sort_order: $('questionOrderField').value,
     };
     if (!body.question || !body.answer) {
-        Swal.fire({ icon: 'warning', title: 'Question and answer are required', confirmButtonColor: '#e92a7c' });
+        Swal.fire({ icon: 'warning', title: 'Question and answer are required', confirmButtonColor: ACCENT_BUTTON_COLOR });
         return;
     }
     const response = await apiRequest('save_question', 'POST', body);
@@ -1433,7 +1457,7 @@ async function saveQuestion() {
         showToast('success', response.message);
         await refreshWorkspace();
     } else {
-        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: '#e92a7c' });
+        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: ACCENT_BUTTON_COLOR });
     }
 }
 
@@ -1449,7 +1473,7 @@ async function deleteQuestion(id) {
     if (!result.isConfirmed) return;
     const response = await apiRequest('delete_question', 'POST', { id });
     if (!response.success) {
-        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: '#e92a7c' });
+        Swal.fire({ icon: 'error', title: response.message, confirmButtonColor: ACCENT_BUTTON_COLOR });
         return;
     }
     showToast('success', response.message);
@@ -1479,7 +1503,7 @@ async function installApp() {
         icon: 'info',
         title: 'Install on iPhone or iPad',
         html: 'Open this page in Safari, tap the <b>Share</b> button, then choose <b>Add to Home Screen</b>.',
-        confirmButtonColor: '#e92a7c',
+        confirmButtonColor: ACCENT_BUTTON_COLOR,
     });
 }
 
@@ -1502,6 +1526,7 @@ window.addEventListener('appinstalled', () => {
 
 const clickActions = {
     'toggle-rail': () => toggleRail(),
+    'toggle-rail-collapse': () => toggleRailCollapse(),
     'close-rail': () => closeRail(),
     'focus-search': () => focusSearch(),
     'toggle-theme': () => toggleTheme(),
@@ -1576,6 +1601,8 @@ document.addEventListener('keydown', event => {
         togglePracticeMode();
     } else if (key === 'f' && state.activeTopic && isSplitView()) {
         toggleFocusMode();
+    } else if (key === 'b' && isWideScreen()) {
+        toggleRailCollapse();
     }
 });
 
